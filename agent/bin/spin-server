@@ -1,0 +1,407 @@
+#!/usr/bin/env node
+
+/**
+ * spin-server: Dynamic ultra-fast project finder, verifier, and dev-server launcher.
+ * Powered by Rust fd + cURL verification in milliseconds.
+ */
+
+const fs = require("node:fs");
+const path = require("node:path");
+const os = require("node:os");
+const cp = require("node:child_process");
+const readline = require("node:readline");
+
+const HOME = os.homedir();
+const FD_BIN = path.join(HOME, ".pi/agent/bin/fd");
+const DEFAULT_ROOTS = [
+  path.join(HOME, "Documents/programming"),
+  process.cwd(),
+];
+
+const WEB_KEYWORDS = new Set(["web", "landing", "page", "frontend", "ui", "client", "app", "site"]);
+const API_KEYWORDS = new Set(["api", "server", "backend", "core", "service"]);
+const CLI_KEYWORDS = new Set(["cli", "tool", "cmd"]);
+
+function findProjectCandidates(query, rootDirs = DEFAULT_ROOTS) {
+  const qTokens = query.toLowerCase().split(/\s+/).filter(Boolean);
+  const subjectTokens = qTokens.filter(t => !WEB_KEYWORDS.has(t) && !API_KEYWORDS.has(t) && !CLI_KEYWORDS.has(t));
+  const wantsWeb = qTokens.some(t => WEB_KEYWORDS.has(t));
+  const wantsApi = qTokens.some(t => API_KEYWORDS.has(t));
+  const wantsCli = qTokens.some(t => CLI_KEYWORDS.has(t));
+
+  const projectDirs = new Set();
+
+  for (const root of rootDirs) {
+    if (!fs.existsSync(root)) continue;
+    try {
+      const fdCmd = fs.existsSync(FD_BIN) ? FD_BIN : "fd";
+      const args = [
+        "-t", "f",
+        "(package\\.json|go\\.mod|Cargo\\.toml)",
+        root,
+        "-E", "node_modules",
+        "-E", "target",
+        "-E", "dist",
+        "-E", ".git",
+        "-E", ".next",
+        "-E", "volumes",
+        "-E", ".cache"
+      ];
+      const output = cp.execFileSync(fdCmd, args, { encoding: "utf8", timeout: 3000 });
+      for (const file of output.trim().split("\n")) {
+        if (file) projectDirs.add(path.dirname(file));
+      }
+    } catch {
+      // Fallback fast readdir if fd fails
+      scanFallback(root, projectDirs, 0);
+    }
+  }
+
+  const scored = [];
+  for (const dir of projectDirs) {
+    const score = scoreDirectory(dir, qTokens, subjectTokens, wantsWeb, wantsApi, wantsCli);
+    if (score > 0) {
+      const proof = inspectProof(dir);
+      if (proof) {
+        scored.push({ dir, score, proof });
+      }
+    }
+  }
+
+  scored.sort((a, b) => b.score - a.score);
+  return scored;
+}
+
+function scanFallback(dir, outSet, depth) {
+  if (depth > 3) return;
+  const ignored = new Set(["node_modules", ".git", "target", "dist", ".next", "volumes", ".cache"]);
+  try {
+    const entries = fs.readdirSync(dir, { withFileTypes: true });
+    for (const e of entries) {
+      if (e.name === "package.json" || e.name === "go.mod" || e.name === "Cargo.toml") {
+        outSet.add(dir);
+      }
+      if (e.isDirectory() && !ignored.has(e.name) && !e.name.startsWith(".")) {
+        scanFallback(path.join(dir, e.name), outSet, depth + 1);
+      }
+    }
+  } catch {}
+}
+
+function scoreDirectory(dirPath, qTokens, subjectTokens, wantsWeb, wantsApi, wantsCli) {
+  const norm = dirPath.toLowerCase();
+  const base = path.basename(dirPath).toLowerCase();
+
+  // If user asked for specific subject (e.g. "amoeba"), dir MUST contain all subject tokens
+  if (subjectTokens.length > 0) {
+    const matchesAll = subjectTokens.every(st => norm.includes(st));
+    if (!matchesAll) return 0;
+  }
+
+  let score = 100;
+
+  if (wantsWeb) {
+    if (base === "web" || base === "frontend" || base === "landing" || base === "client") score += 80;
+    else if (norm.includes("/web") || norm.includes("/frontend") || norm.includes("/landing")) score += 50;
+  }
+  if (wantsApi) {
+    if (base === "api" || base === "server" || base === "backend") score += 80;
+    else if (norm.includes("/api") || norm.includes("/server") || norm.includes("/backend")) score += 50;
+  }
+  if (wantsCli) {
+    if (base === "cli") score += 80;
+    else if (norm.includes("/cli")) score += 50;
+  }
+
+  for (const token of qTokens) {
+    if (base === token) score += 30;
+    else if (base.includes(token)) score += 15;
+    else if (norm.includes(token)) score += 10;
+  }
+
+  return score;
+}
+
+function inspectProof(dir) {
+  const pkgPath = path.join(dir, "package.json");
+  const goPath = path.join(dir, "go.mod");
+  const cargoPath = path.join(dir, "Cargo.toml");
+
+  if (fs.existsSync(pkgPath)) {
+    let pkg = {};
+    try { pkg = JSON.parse(fs.readFileSync(pkgPath, "utf8")); } catch {}
+
+    const hasBun = fs.existsSync(path.join(dir, "bun.lock")) || fs.existsSync(path.join(dir, "bun.lockb"));
+    const hasPnpm = fs.existsSync(path.join(dir, "pnpm-lock.yaml"));
+    const hasYarn = fs.existsSync(path.join(dir, "yarn.lock"));
+
+    let runner = "npm";
+    if (hasBun) runner = "bun";
+    else if (hasPnpm) runner = "pnpm";
+    else if (hasYarn) runner = "yarn";
+
+    let devCommand = null;
+    if (pkg.scripts?.dev) devCommand = `${runner} run dev`;
+    else if (pkg.scripts?.start) devCommand = `${runner} start`;
+    else if (pkg.scripts?.serve) devCommand = `${runner} run serve`;
+    else devCommand = `${runner} start`;
+
+    let framework = "Node.js";
+    const allDeps = { ...(pkg.dependencies || {}), ...(pkg.devDependencies || {}) };
+    if (allDeps["next"]) framework = `Next.js ${allDeps["next"].replace(/[\^~]/, "")}`;
+    else if (allDeps["vite"]) {
+      if (allDeps["react"]) framework = "Vite + React";
+      else if (allDeps["vue"]) framework = "Vite + Vue";
+      else framework = "Vite";
+    }
+
+    let port = 3000;
+    for (const ext of [".ts", ".js", ".mjs", ".cjs"]) {
+      const vPath = path.join(dir, `vite.config${ext}`);
+      if (fs.existsSync(vPath)) {
+        const content = fs.readFileSync(vPath, "utf8");
+        const match = content.match(/port:\s*(\d+)/);
+        if (match) port = parseInt(match[1], 10);
+      }
+    }
+    if (devCommand) {
+      const pMatch = devCommand.match(/(?:-p|--port|PORT=)\s*(\d+)/);
+      if (pMatch) port = parseInt(pMatch[1], 10);
+    }
+
+    return {
+      type: "node",
+      dir,
+      name: pkg.name || path.basename(dir),
+      framework,
+      runner,
+      command: devCommand,
+      port,
+      scripts: pkg.scripts || {},
+      lockfile: hasBun ? "bun.lock" : hasPnpm ? "pnpm-lock.yaml" : hasYarn ? "yarn.lock" : "package-lock.json"
+    };
+  }
+
+  if (fs.existsSync(goPath)) {
+    const modContent = fs.readFileSync(goPath, "utf8");
+    let framework = "Go HTTP";
+    if (modContent.includes("github.com/gofiber/fiber")) framework = "Go Fiber";
+    else if (modContent.includes("github.com/gin-gonic/gin")) framework = "Go Gin";
+    return {
+      type: "go",
+      dir,
+      name: path.basename(dir),
+      framework,
+      runner: "go",
+      command: "go run main.go",
+      port: 8080,
+      scripts: {},
+      lockfile: "go.sum"
+    };
+  }
+
+  if (fs.existsSync(cargoPath)) {
+    const cargoContent = fs.readFileSync(cargoPath, "utf8");
+    let framework = "Rust (Cargo)";
+    if (cargoContent.includes("actix-web")) framework = "Rust (Actix Web)";
+    else if (cargoContent.includes("axum")) framework = "Rust (Axum)";
+    return {
+      type: "rust",
+      dir,
+      name: path.basename(dir),
+      framework,
+      runner: "cargo",
+      command: "cargo run",
+      port: 8080,
+      scripts: {},
+      lockfile: "Cargo.lock"
+    };
+  }
+
+  return null;
+}
+
+function verifyCurl(port, timeoutMs = 6000) {
+  const startTime = Date.now();
+  return new Promise((resolve) => {
+    const check = () => {
+      cp.exec(`curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:${port}/`, (err, stdout) => {
+        const code = parseInt(stdout.trim(), 10);
+        if (!isNaN(code) && code > 0) {
+          return resolve({ ok: true, status: code, timeMs: Date.now() - startTime });
+        }
+        if (Date.now() - startTime > timeoutMs) {
+          return resolve({ ok: false, timeMs: Date.now() - startTime, error: `Timeout waiting for port ${port}` });
+        }
+        setTimeout(check, 120);
+      });
+    };
+    check();
+  });
+}
+
+function checkPortListening(port) {
+  try {
+    const out = cp.execSync(`curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:${port}/`, { timeout: 800 });
+    const code = parseInt(out.toString().trim(), 10);
+    return code > 0 ? code : null;
+  } catch {
+    return null;
+  }
+}
+
+async function startServer(proof) {
+  const activeCode = checkPortListening(proof.port);
+  if (activeCode) {
+    return {
+      alreadyRunning: true,
+      url: `http://localhost:${proof.port}`,
+      port: proof.port,
+      httpStatus: activeCode,
+      message: `Server already running and serving HTTP ${activeCode}`
+    };
+  }
+
+  const logPath = `/tmp/server-${proof.name.replace(/[^a-zA-Z0-9_-]/g, "_")}.log`;
+  const logFd = fs.openSync(logPath, "w");
+
+  const [cmd, ...args] = proof.command.split(" ");
+  const child = cp.spawn(cmd, args, {
+    cwd: proof.dir,
+    detached: true,
+    stdio: ["ignore", logFd, logFd],
+    env: { ...process.env, FORCE_COLOR: "1" }
+  });
+  child.unref();
+
+  const verify = await verifyCurl(proof.port, 6000);
+  if (!verify.ok) {
+    let tailLogs = "";
+    try {
+      const logs = fs.readFileSync(logPath, "utf8");
+      tailLogs = logs.split("\n").slice(-15).join("\n");
+    } catch {}
+    throw new Error(`Failed to verify server on port ${proof.port} (${verify.error})\nLogs:\n${tailLogs}`);
+  }
+
+  return {
+    alreadyRunning: false,
+    pid: child.pid,
+    url: `http://localhost:${proof.port}`,
+    port: proof.port,
+    httpStatus: verify.status,
+    elapsedMs: verify.timeMs,
+    logPath
+  };
+}
+
+async function askConfirm(promptText) {
+  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+  return new Promise((resolve) => {
+    rl.question(promptText, (ans) => {
+      rl.close();
+      resolve(ans.trim());
+    });
+  });
+}
+
+// CLI Execution Entrypoint
+async function main() {
+  const args = process.argv.slice(2);
+  const autoConfirm = args.includes("-y") || args.includes("--yes");
+  const filteredArgs = args.filter(a => a !== "-y" && a !== "--yes");
+  let query = filteredArgs.join(" ");
+
+  if (!query) {
+    console.error("Usage: spin-server [-y] <project name / search query>");
+    process.exit(1);
+  }
+
+  while (true) {
+    console.log(`\x1b[36m⚡ Searching project candidates for:\x1b[0m "${query}"`);
+    const startTime = performance.now();
+    const candidates = findProjectCandidates(query);
+    const elapsed = (performance.now() - startTime).toFixed(1);
+
+    if (candidates.length === 0) {
+      console.log(`\x1b[33m⚠ No matching runnable projects found for "${query}" (${elapsed}ms)\x1b[0m`);
+      const retry = await askConfirm("Enter new search term or directory path (or Ctrl+C to cancel): ");
+      if (!retry) process.exit(1);
+      query = retry;
+      continue;
+    }
+
+    const top = candidates[0];
+    const proof = top.proof;
+
+    console.log(`\n\x1b[32m✔ Found Target in ${elapsed}ms:\x1b[0m`);
+    console.log(`  \x1b[1mDirectory:\x1b[0m ${proof.dir}`);
+    console.log(`  \x1b[1mFramework:\x1b[0m ${proof.framework}`);
+    console.log(`  \x1b[1mCommand:\x1b[0m   ${proof.command}`);
+    console.log(`  \x1b[1mPort:\x1b[0m      ${proof.port}`);
+    console.log(`  \x1b[1mLockfile:\x1b[0m  ${proof.lockfile}`);
+    if (proof.scripts?.dev) console.log(`  \x1b[1mDev Script:\x1b[0m ${proof.scripts.dev}`);
+
+    let proceed = autoConfirm;
+    if (!autoConfirm) {
+      const ans = (await askConfirm("\n\x1b[35mConfirm launch server? [Y/n/search again]: \x1b[0m")).toLowerCase();
+      if (ans === "" || ans === "y" || ans === "yes") {
+        proceed = true;
+      } else if (ans === "n" || ans === "no") {
+        const retry = await askConfirm("Enter new search term or directory path: ");
+        if (!retry) {
+          console.log("Aborted.");
+          process.exit(0);
+        }
+        query = retry;
+        continue;
+      } else {
+        query = ans;
+        continue;
+      }
+    }
+
+    if (proceed) {
+      console.log(`\n\x1b[36m🚀 Spawning ${proof.command} in ${proof.dir}...\x1b[0m`);
+      const res = await startServer(proof);
+      if (res.alreadyRunning) {
+        console.log(`\x1b[32m✔ Server was ALREADY running!\x1b[0m`);
+      } else {
+        console.log(`\x1b[32m✔ Server live and verified in ${res.elapsedMs}ms!\x1b[0m`);
+      }
+      console.log(`  URL:         \x1b[1;34m${res.url}\x1b[0m`);
+      console.log(`  HTTP Status: \x1b[1;32m${res.httpStatus} OK\x1b[0m`);
+      if (res.pid) console.log(`  PID:         ${res.pid}`);
+      if (res.logPath) console.log(`  Logs:        ${res.logPath}`);
+
+      // Emit JSON flag for programmatic agents
+      console.log("\n\x1b[90mSERVER_CONFIRMATION_FLAG=" + JSON.stringify({
+        confirmed: true,
+        status: "running",
+        url: res.url,
+        port: res.port,
+        httpStatus: res.httpStatus,
+        directory: proof.dir,
+        command: proof.command,
+        framework: proof.framework,
+        pid: res.pid
+      }) + "\x1b[0m");
+      process.exit(0);
+    }
+  }
+}
+
+if (require.main === module) {
+  main().catch(err => {
+    console.error("\x1b[31mError:\x1b[0m", err.message);
+    process.exit(1);
+  });
+}
+
+module.exports = {
+  findProjectCandidates,
+  inspectProof,
+  verifyCurl,
+  checkPortListening,
+  startServer,
+};

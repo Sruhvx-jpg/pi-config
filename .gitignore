@@ -1,0 +1,43 @@
+# Exclude sessions (strict privacy rule)
+sessions/
+agent/sessions/
+**/sessions/
+
+# Exclude auth tokens, credentials, and secrets
+auth.json
+agent/auth.json
+**/auth.json
+*.env
+*.env.*
+*.ovpn
+
+# Exclude user personal backlog and runtime repo state
+agent/backlog.json
+backlog.json
+agent/repo-flags.json
+agent/cfpd-repos.json
+repo-flags.json
+cfpd-repos.json
+
+# Exclude local private agent overlays and personal personas
+agent/AGENTS.local.md
+AGENTS.local.md
+*.local.md
+
+# Exclude node_modules and npm caches
+node_modules/
+agent/npm/node_modules/
+**/node_modules/
+
+# Exclude compiled binaries
+agent/bin/fd
+agent/bin/rg
+bin/fd
+bin/rg
+
+# Temp, cache, and logs
+*.log
+.cache/
+.DS_Store
+generated-images/
+1/

@@ -1,0 +1,10 @@
+{
+  "packages": [
+    "npm:pi-antigravity"
+  ],
+  "lastChangelogVersion": "0.85.1",
+  "theme": "nvim-dark",
+  "defaultProvider": "antigravity",
+  "defaultModel": "gemini-3.7-flash",
+  "defaultThinkingLevel": "high"
+}

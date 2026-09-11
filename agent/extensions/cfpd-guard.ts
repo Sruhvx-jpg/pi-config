@@ -4,15 +4,16 @@
  * Commit For Personal Data (CFPD) Pre-Commit Guard & Daemon:
  * - Scans git staged commits for personal identifiable information (PII),
  *   personal emails, API keys, private keys, auth tokens, and sensitive files.
- * - Flags:
- *     --ext-reviewCFPD: Enable CFPD scanner for the active session.
- *     --ext-always-on / --ext-alwayson: Permanently lock CFPD for the repo.
- *                                       Supports `<repo> ->` pointer syntax.
- *     --ext-off:                        Deactivates permanent lock for the repo.
+ * - Managed directly via `/cfpd` slash command with interactive repository selector.
  * - Intercepts:
  *     `git commit` in both bash tool calls and interactive `!` user bash.
  * - Commands:
- *     `/cfpd [status|scan|always-on [repo ->]|off [repo ->]]`
+ *     `/cfpd`                 - Open interactive repository picker to enable/disable CFPD
+ *     `/cfpd scan`            - Run CFPD scanner on staged files now
+ *     `/cfpd <repo>`          - Toggle CFPD for specific repository (supports pointer syntax)
+ *     `/cfpd on <repo>`       - Explicitly enable CFPD for repository
+ *     `/cfpd off <repo>`      - Explicitly disable CFPD for repository
+ *     `/cfpd status`          - View CFPD status across all local repositories
  */
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
@@ -20,6 +21,10 @@ import * as os from "node:os";
 import * as cp from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import {
+  discoverAllUserRepos,
+  type RepoInfo,
+} from "./list-user-repos.ts";
 import {
   getGitRoot,
   isRepoFlagEnabled,
@@ -125,85 +130,13 @@ function isGitCommitCommand(command: string): boolean {
 // Extension Entry Point
 // ============================================================================
 export default function (pi: ExtensionAPI) {
-  // 1. Register CLI Flags
-  pi.registerFlag("ext-reviewCFPD", {
-    description: "Commit For Personal Data (CFPD): scan staged git commits for personal/sensitive data",
-    type: "boolean",
-    default: false,
-  });
-
-  pi.registerFlag("ext-review-cfpd", {
-    description: "Alias for --ext-reviewCFPD",
-    type: "boolean",
-    default: false,
-  });
-
-  pi.registerFlag("ext-review-CFPD", {
-    description: "Alias for --ext-reviewCFPD",
-    type: "boolean",
-    default: false,
-  });
-
-  pi.registerFlag("ext-always-on", {
-    description: "Permanently lock paired extension flag for repository (supports <repo> -> pointer)",
-    type: "boolean",
-    default: false,
-  });
-
-  pi.registerFlag("ext-alwayson", {
-    description: "Alias for --ext-always-on",
-    type: "boolean",
-    default: false,
-  });
-
-  pi.registerFlag("ext-off", {
-    description: "Permanently deactivate paired extension flag for repository (supports <repo> -> pointer)",
-    type: "boolean",
-    default: false,
-  });
-
-  pi.registerFlag("repo", {
-    description: "Target repository name or path for paired extension actions (e.g. my-project ->)",
-    type: "string",
-  });
-
-  // Session Start: Handle paired modifier flags and initialize status
+  // Session Start: Initialize status badge for current repository
   pi.on("session_start", async (_event, ctx) => {
-    const flagCfpd = Boolean(
-      pi.getFlag("ext-reviewCFPD") ||
-      pi.getFlag("ext-review-cfpd") ||
-      pi.getFlag("ext-review-CFPD")
-    );
-    const alwaysOnVal = pi.getFlag("ext-always-on") ?? pi.getFlag("ext-alwayson");
-    const offVal = pi.getFlag("ext-off");
-    const repoFlagVal = pi.getFlag("repo");
-
-    // Resolve target repo hint (from flag value or --repo flag)
-    const targetHint = (typeof alwaysOnVal === "string" ? alwaysOnVal : null)
-      || (typeof offVal === "string" ? offVal : null)
-      || (typeof repoFlagVal === "string" ? repoFlagVal : null);
-
-    const targetGitRoot = resolveRepoPath(targetHint, ctx.cwd);
-
-    if (flagCfpd && targetGitRoot) {
-      if (Boolean(alwaysOnVal)) {
-        setRepoFlag(targetGitRoot, "cfpd", true);
-        installGitHook(targetGitRoot);
-        ctx.ui.notify(`🛡️ CFPD: Repository permanently locked with pre-commit guard: ${path.basename(targetGitRoot)}`, "info");
-      } else if (Boolean(offVal)) {
-        setRepoFlag(targetGitRoot, "cfpd", false);
-        removeGitHook(targetGitRoot);
-        ctx.ui.notify(`🛡️ CFPD: Permanent lock removed for: ${path.basename(targetGitRoot)}`, "info");
-      }
-    }
-
     const currentGitRoot = getGitRoot(ctx.cwd);
-    const isLocked = isRepoFlagEnabled(currentGitRoot, "cfpd");
-    const active = flagCfpd || isLocked;
-
-    if (active) {
-      const tag = isLocked ? "CFPD: LOCKED" : "CFPD: ON";
-      ctx.ui.setStatus("cfpd", `🛡️ ${tag}`);
+    if (isRepoFlagEnabled(currentGitRoot, "cfpd")) {
+      ctx.ui.setStatus("cfpd", "🛡️ CFPD: ON");
+    } else {
+      ctx.ui.setStatus("cfpd", undefined);
     }
   });
 
@@ -215,14 +148,7 @@ export default function (pi: ExtensionAPI) {
     if (!isGitCommitCommand(command)) return;
 
     const currentGitRoot = getGitRoot(ctx.cwd);
-    const active =
-      Boolean(
-        pi.getFlag("ext-reviewCFPD") ||
-        pi.getFlag("ext-review-cfpd") ||
-        pi.getFlag("ext-review-CFPD")
-      ) || isRepoFlagEnabled(currentGitRoot, "cfpd");
-
-    if (!active) return;
+    if (!isRepoFlagEnabled(currentGitRoot, "cfpd")) return;
 
     // Run CFPD scan on staged diff
     const findings = runScanner(ctx.cwd);
@@ -257,14 +183,7 @@ export default function (pi: ExtensionAPI) {
     if (!isGitCommitCommand(event.command)) return;
 
     const currentGitRoot = getGitRoot(ctx.cwd);
-    const active =
-      Boolean(
-        pi.getFlag("ext-reviewCFPD") ||
-        pi.getFlag("ext-review-cfpd") ||
-        pi.getFlag("ext-review-CFPD")
-      ) || isRepoFlagEnabled(currentGitRoot, "cfpd");
-
-    if (!active) return;
+    if (!isRepoFlagEnabled(currentGitRoot, "cfpd")) return;
 
     const findings = runScanner(ctx.cwd);
     if (findings.length === 0) return;
@@ -287,17 +206,19 @@ export default function (pi: ExtensionAPI) {
     }
   });
 
-  // Register command: /cfpd [status|scan|always-on [repo ->]|off [repo ->]]
+  // Register command: /cfpd [scan|status|on <repo>|off <repo>|<repo>]
   pi.registerCommand("cfpd", {
-    description: "Commit For Personal Data (CFPD) guard: check staged files or manage repository lock",
+    description: "Commit For Personal Data (CFPD) guard: manage repository protection and scan staged commits",
     handler: async (args, ctx) => {
-      const parts = (args || "").trim().split(/\s+/);
+      const trimmed = (args || "").trim();
+      const parts = trimmed.split(/\s+/).filter(Boolean);
       const sub = (parts[0] || "").toLowerCase();
-      const targetHint = parts.slice(1).join(" ") || null;
-      const targetGitRoot = resolveRepoPath(targetHint, ctx.cwd);
 
+      // Subcommand: /cfpd scan
       if (sub === "scan") {
-        const findings = runScanner(targetGitRoot || ctx.cwd);
+        const currentGitRoot = getGitRoot(ctx.cwd);
+        const scanTarget = currentGitRoot || ctx.cwd;
+        const findings = runScanner(scanTarget);
         if (findings.length === 0) {
           ctx.ui.notify("✔ CFPD: Staged files are clean. No sensitive leaks found.", "info");
         } else {
@@ -310,119 +231,203 @@ export default function (pi: ExtensionAPI) {
         return;
       }
 
-      if (sub === "always-on" || sub === "lock" || sub === "on") {
+      // Subcommand: /cfpd status
+      if (sub === "status") {
+        const allRepos = discoverAllUserRepos();
+        const currentGitRoot = getGitRoot(ctx.cwd);
+        const lines = allRepos.map((r) => {
+          const isCurrent = currentGitRoot && path.resolve(r.path) === path.resolve(currentGitRoot);
+          const isEnabled = isRepoFlagEnabled(r.path, "cfpd");
+          const badge = isEnabled ? "● PROTECTED" : "○ OFF";
+          const curr = isCurrent ? " [CURRENT]" : "";
+          return `  ${badge.padEnd(14)} ${r.name}${curr} (${r.branch})`;
+        });
+        ctx.ui.notify(`CFPD Repository Status:\n${lines.join("\n")}`, "info");
+        return;
+      }
+
+      // Subcommand: /cfpd on [repo] / /cfpd enable [repo]
+      if (sub === "on" || sub === "enable") {
+        const targetHint = parts.slice(1).join(" ") || null;
         const diag = resolveRepoWithDiagnostics(targetHint, ctx.cwd);
+        const targetRoot = diag.gitRoot || (diag.closestMatch && diag.exact ? diag.closestMatch.path : null);
+
+        if (!targetRoot) {
+          ctx.ui.notify(`CFPD: Repository not found "${targetHint || "current"}".`, "error");
+          return;
+        }
+
+        setRepoFlag(targetRoot, "cfpd", true);
+        installGitHook(targetRoot);
+        const currentGitRoot = getGitRoot(ctx.cwd);
+        if (currentGitRoot && path.resolve(targetRoot) === path.resolve(currentGitRoot)) {
+          ctx.ui.setStatus("cfpd", "🛡️ CFPD: ON");
+        }
+        ctx.ui.notify(`✔ CFPD: Protection ENABLED for ${path.basename(targetRoot)} (pre-commit hook installed).`, "info");
+        return;
+      }
+
+      // Subcommand: /cfpd off [repo] / /cfpd disable [repo]
+      if (sub === "off" || sub === "disable") {
+        const targetHint = parts.slice(1).join(" ") || null;
+        const diag = resolveRepoWithDiagnostics(targetHint, ctx.cwd);
+        const targetRoot = diag.gitRoot || (diag.closestMatch && diag.exact ? diag.closestMatch.path : null);
+
+        if (!targetRoot) {
+          ctx.ui.notify(`CFPD: Repository not found "${targetHint || "current"}".`, "error");
+          return;
+        }
+
+        setRepoFlag(targetRoot, "cfpd", false);
+        removeGitHook(targetRoot);
+        const currentGitRoot = getGitRoot(ctx.cwd);
+        if (currentGitRoot && path.resolve(targetRoot) === path.resolve(currentGitRoot)) {
+          ctx.ui.setStatus("cfpd", undefined);
+        }
+        ctx.ui.notify(`CFPD: Protection DISABLED for ${path.basename(targetRoot)} (pre-commit hook removed).`, "info");
+        return;
+      }
+
+      // If a specific repo target was passed directly: /cfpd <repo>
+      if (trimmed.length > 0) {
+        const diag = resolveRepoWithDiagnostics(trimmed, ctx.cwd);
         let finalRoot = diag.gitRoot;
 
-        if (!finalRoot && ctx.hasUI) {
-          if (diag.closestMatch) {
-            const pick = await ctx.ui.select(
-              `Repo "${diag.targetRaw}" not found. Did you mean "${diag.closestMatch.name}"?`,
-              [
-                `1. Yes, use "${diag.closestMatch.name}"`,
-                "2. Choose from all repositories",
-                "3. Cancel",
-              ]
-            );
-            if (pick?.startsWith("1.")) {
-              finalRoot = diag.closestMatch.path;
-            } else if (pick?.startsWith("2.")) {
-              const options = diag.allRepos.map((r) => `${r.name} (${r.branch}) -> ${r.path}`);
-              const chosen = await ctx.ui.select("Select target repository:", options);
-              if (chosen) {
-                const found = diag.allRepos.find((r) => r.name === chosen.split(" ")[0]);
-                if (found) finalRoot = found.path;
-              }
-            }
-          } else {
-            const options = diag.allRepos.map((r) => `${r.name} (${r.branch}) -> ${r.path}`);
-            const chosen = await ctx.ui.select("Select repository to lock with CFPD:", options);
-            if (chosen) {
-              const found = diag.allRepos.find((r) => r.name === chosen.split(" ")[0]);
-              if (found) finalRoot = found.path;
-            }
+        if (!finalRoot && diag.closestMatch && diag.exact) {
+          finalRoot = diag.closestMatch.path;
+        }
+
+        if (!finalRoot && ctx.hasUI && diag.closestMatch) {
+          const pick = await ctx.ui.select(
+            `Repo "${diag.targetRaw}" not found. Did you mean "${diag.closestMatch.name}"?`,
+            [
+              `1. Yes, toggle "${diag.closestMatch.name}"`,
+              "2. Cancel",
+            ]
+          );
+          if (pick?.startsWith("1.")) {
+            finalRoot = diag.closestMatch.path;
           }
         }
 
         if (!finalRoot) {
-          ctx.ui.notify(`CFPD: No repository selected.`, "warning");
+          ctx.ui.notify(`CFPD: Could not resolve repository "${trimmed}".`, "error");
           return;
         }
 
-        setRepoFlag(finalRoot, "cfpd", true);
-        installGitHook(finalRoot);
-        ctx.ui.setStatus("cfpd", "🛡️ CFPD: LOCKED");
-        ctx.ui.notify(`✔ CFPD: Permanently locked for ${path.basename(finalRoot)}. Pre-commit hook installed.`, "info");
+        const currentlyEnabled = isRepoFlagEnabled(finalRoot, "cfpd");
+        const nextState = !currentlyEnabled;
+        setRepoFlag(finalRoot, "cfpd", nextState);
+
+        const currentGitRoot = getGitRoot(ctx.cwd);
+        if (currentGitRoot && path.resolve(finalRoot) === path.resolve(currentGitRoot)) {
+          ctx.ui.setStatus("cfpd", nextState ? "🛡️ CFPD: ON" : undefined);
+        }
+
+        if (nextState) {
+          installGitHook(finalRoot);
+          ctx.ui.notify(`✔ CFPD: Protection ENABLED for ${path.basename(finalRoot)} (pre-commit hook installed).`, "info");
+        } else {
+          removeGitHook(finalRoot);
+          ctx.ui.notify(`CFPD: Protection DISABLED for ${path.basename(finalRoot)} (pre-commit hook removed).`, "info");
+        }
         return;
       }
 
-      if (sub === "off" || sub === "unlock") {
-        const diag = resolveRepoWithDiagnostics(targetHint, ctx.cwd);
-        let finalRoot = diag.gitRoot;
+      // No arguments: Interactive repository selector loop
+      if (!ctx.hasUI) {
+        const allRepos = discoverAllUserRepos();
+        const currentGitRoot = getGitRoot(ctx.cwd);
+        const lines = allRepos.map((r) => {
+          const isCurrent = currentGitRoot && path.resolve(r.path) === path.resolve(currentGitRoot);
+          const isEnabled = isRepoFlagEnabled(r.path, "cfpd");
+          const badge = isEnabled ? "● PROTECTED" : "○ OFF";
+          const curr = isCurrent ? " [CURRENT]" : "";
+          return `  ${badge.padEnd(14)} ${r.name}${curr} (${r.branch})`;
+        });
+        ctx.ui.notify(`CFPD Repository Status:\n${lines.join("\n")}`, "info");
+        return;
+      }
 
-        if (!finalRoot && ctx.hasUI) {
-          if (diag.closestMatch) {
-            const pick = await ctx.ui.select(
-              `Repo "${diag.targetRaw}" not found. Did you mean "${diag.closestMatch.name}"?`,
-              [
-                `1. Yes, remove lock on "${diag.closestMatch.name}"`,
-                "2. Choose from all repositories",
-                "3. Cancel",
-              ]
-            );
-            if (pick?.startsWith("1.")) {
-              finalRoot = diag.closestMatch.path;
-            } else if (pick?.startsWith("2.")) {
-              const options = diag.allRepos.map((r) => `${r.name} (${r.branch}) -> ${r.path}`);
-              const chosen = await ctx.ui.select("Select target repository:", options);
-              if (chosen) {
-                const found = diag.allRepos.find((r) => r.name === chosen.split(" ")[0]);
-                if (found) finalRoot = found.path;
-              }
-            }
+      while (true) {
+        const allRepos = discoverAllUserRepos();
+        const currentGitRoot = getGitRoot(ctx.cwd);
+
+        // Sort repos: current repo first, then protected repos, then alphabetical
+        const sorted = [...allRepos].sort((a, b) => {
+          const aIsCurrent = currentGitRoot && path.resolve(a.path) === path.resolve(currentGitRoot);
+          const bIsCurrent = currentGitRoot && path.resolve(b.path) === path.resolve(currentGitRoot);
+          if (aIsCurrent) return -1;
+          if (bIsCurrent) return 1;
+
+          const aEnabled = isRepoFlagEnabled(a.path, "cfpd");
+          const bEnabled = isRepoFlagEnabled(b.path, "cfpd");
+          if (aEnabled && !bEnabled) return -1;
+          if (!aEnabled && bEnabled) return 1;
+
+          return a.name.toLowerCase().localeCompare(b.name.toLowerCase());
+        });
+
+        const options: string[] = [];
+        const repoMap = new Map<string, RepoInfo>();
+
+        for (const r of sorted) {
+          const isCurrent = currentGitRoot && path.resolve(r.path) === path.resolve(currentGitRoot);
+          const isEnabled = isRepoFlagEnabled(r.path, "cfpd");
+          const statusBadge = isEnabled ? "● [PROTECTED]  " : "○ [UNPROTECTED]";
+          const currentBadge = isCurrent ? " ⭐ (current)" : "";
+          const action = isEnabled ? "-> Click to Disable" : "-> Click to Enable";
+          const label = `${statusBadge} ${r.name}${currentBadge} (${r.branch}) ${action}`;
+          options.push(label);
+          repoMap.set(label, r);
+        }
+
+        options.push("🔍 Scan staged files in current repository");
+        options.push("✔ Done");
+
+        const selection = await ctx.ui.select(
+          "🛡️ CFPD Guard: Manage Protected Repositories",
+          options
+        );
+
+        if (!selection || selection === "✔ Done") {
+          break;
+        }
+
+        if (selection.startsWith("🔍 Scan")) {
+          const scanTarget = currentGitRoot || ctx.cwd;
+          const findings = runScanner(scanTarget);
+          if (findings.length === 0) {
+            ctx.ui.notify("✔ CFPD: Staged files are clean. No sensitive leaks found.", "info");
           } else {
-            const options = diag.allRepos.map((r) => `${r.name} (${r.branch}) -> ${r.path}`);
-            const chosen = await ctx.ui.select("Select repository to remove CFPD lock:", options);
-            if (chosen) {
-              const found = diag.allRepos.find((r) => r.name === chosen.split(" ")[0]);
-              if (found) finalRoot = found.path;
-            }
+            ctx.ui.notify(`⚠️ CFPD: Detected ${findings.length} sensitive item(s) staged!`, "error");
+            const summary = findings
+              .map((f) => `• [${f.severity}] ${f.ruleName} in ${f.file} (${f.redacted})`)
+              .join("\n");
+            ctx.ui.notify(summary, "warning");
+          }
+          continue;
+        }
+
+        const chosenRepo = repoMap.get(selection);
+        if (chosenRepo) {
+          const currentlyEnabled = isRepoFlagEnabled(chosenRepo.path, "cfpd");
+          const nextState = !currentlyEnabled;
+          setRepoFlag(chosenRepo.path, "cfpd", nextState);
+
+          if (currentGitRoot && path.resolve(chosenRepo.path) === path.resolve(currentGitRoot)) {
+            ctx.ui.setStatus("cfpd", nextState ? "🛡️ CFPD: ON" : undefined);
+          }
+
+          if (nextState) {
+            installGitHook(chosenRepo.path);
+            ctx.ui.notify(`✔ CFPD: Protection ENABLED for ${chosenRepo.name} (hook installed).`, "info");
+          } else {
+            removeGitHook(chosenRepo.path);
+            ctx.ui.notify(`CFPD: Protection DISABLED for ${chosenRepo.name} (hook uninstalled).`, "info");
           }
         }
-
-        if (!finalRoot) {
-          ctx.ui.notify(`CFPD: No repository selected.`, "warning");
-          return;
-        }
-
-        setRepoFlag(finalRoot, "cfpd", false);
-        removeGitHook(finalRoot);
-        ctx.ui.setStatus("cfpd", "");
-        ctx.ui.notify(`CFPD: Removed permanent lock for ${path.basename(finalRoot)}.`, "info");
-        return;
       }
-
-      // Default: Status
-      const currentGitRoot = getGitRoot(ctx.cwd);
-      const isLocked = isRepoFlagEnabled(currentGitRoot, "cfpd");
-      const isFlagOn = Boolean(
-        pi.getFlag("ext-reviewCFPD") ||
-        pi.getFlag("ext-review-cfpd") ||
-        pi.getFlag("ext-review-CFPD")
-      );
-      const repoName = currentGitRoot ? path.basename(currentGitRoot) : "none";
-
-      const statusMsg = [
-        `CFPD Guard Status:`,
-        `  • Active for session (--ext-reviewCFPD): ${isFlagOn ? "YES" : "NO"}`,
-        `  • Current Repo (${repoName}): ${isLocked ? "LOCKED (Always-On)" : "NOT LOCKED"}`,
-        `Commands:`,
-        `  /cfpd scan                       - Test staged diff for leaks`,
-        `  /cfpd always-on [repo ->]        - Permanently protect repo`,
-        `  /cfpd off [repo ->]              - Disable permanent protection`,
-      ].join("\n");
-
-      ctx.ui.notify(statusMsg, "info");
     },
   });
 }

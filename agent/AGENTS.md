@@ -19,13 +19,13 @@ You are an expert systems coding companion. Follow these architectural guideline
 
 ## Security & Privacy Extensions
 - **Strict Privacy**: NEVER track, log, or commit personal identifiable information (real names, ages, credentials, locations) into config files or git repositories.
-- **Unified Extension Modifiers & Pointer Syntax**:
-  - **Session-Scoped by Default**: Unless `--ext-always-on` is explicitly paired, any extension flag (`--ext-reviewCFPD`, `--ext-review-code`) is active for the **current session only** and does not alter permanent repository config.
-  - `--ext-always-on` (or `--ext-alwayson`): Paired with extension flags to permanently lock them as always-on for the repository (persisted in `~/.pi/agent/repo-flags.json`).
-  - `--ext-off`: Paired with extension flags to remove permanent lock for the repository.
-  - **Target Repo Pointer Syntax (`<repo> ->` or `-> <repo>`)**: Specify the exact repository directly without needing to `cd` into it:
-    - CLI: `pi --ext-reviewCFPD --ext-always-on "MyRepo ->"` or `pi --ext-review-code --ext-always-on --repo "MyRepo ->"`
-    - Slash commands: `/cfpd always-on MyRepo ->` or `/reviewcode always-on -> MyRepo`
+- **Interactive Repository Management (No CLI Flags)**:
+  - CLI flags are scrapped. Security extensions are managed directly and interactively per-repository via slash commands (`/cfpd` and `/reviewcode`).
+  - Running `/cfpd` or `/reviewcode` without arguments launches an interactive multi-repo toggle menu discovered automatically via `list-user-repos`.
+  - State is cleanly persisted in `~/.pi/agent/repo-flags.json` and status badges update dynamically in the TUI footer (`🛡️ CFPD: ON`, `👁️ REVIEW: ON`).
+  - **Target Repo Pointer Syntax (`<repo> ->` or `-> <repo>`)**: Direct targets supported without opening the menu:
+    - `/cfpd <repo>` or `/cfpd on|off <repo>` (e.g. `/cfpd iceberg-rust ->` or `/cfpd amoeba`)
+    - `/reviewcode <repo>` or `/reviewcode on|off <repo>`
     - Supports fuzzy/relative/path lookup across local development directories.
   - **Repo Ambiguity & Typo Protocol**:
     - If a target repo is omitted, ambiguous, or contains a typo:
@@ -34,17 +34,15 @@ You are an expert systems coding companion. Follow these architectural guideline
       3. If no repo was provided, use `ask_user_question` with a clear multi-choice selection listing candidate repositories.
 - **Local Repositories Scanner (`~/.pi/agent/extensions/list-user-repos.ts`)**:
   - Tool `list_user_repos`: Instant inspection of local repos, active branches, dirty status, and active security flags.
-  - Command `/repos [query]`: Cyberpunk visual table of all git repositories.
+  - Command `/repos [query]`: Cyberpunk visual table of all git repositories with active badges (`[🛡️ CFPD]`, `[👁️ REVIEW]`).
 - **CFPD Guard (`~/.pi/agent/extensions/cfpd-guard.ts` & `~/.pi/agent/bin/cfpd-scanner`)**:
-  - CLI Flag `--ext-reviewCFPD` (or `--ext-review-cfpd`): Activates Commit For Personal Data pre-commit interception.
-  - Paired with `--ext-always-on`: Permanently locks CFPD for the repo and installs `.git/hooks/pre-commit`.
-  - Paired with `--ext-off`: Removes permanent lock and pre-commit hook.
-  - Scans staged diffs for personal emails, API keys (`sk-`, `ghp_`, `AKIA`), private keys, JWTs, phone numbers, and forbidden credential files (`.env`, `auth.json`, `*.ovpn`).
+  - Pre-commit interception for personal identifiable data (PII), personal emails, API keys, private keys, JWTs, and secret files.
+  - Interactively managed via `/cfpd`. Automatically installs/removes `.git/hooks/pre-commit` when toggled.
+  - `/cfpd scan`: Directly triggers staged diff leak detection on the current repo.
 - **Code Review Gate (`~/.pi/agent/extensions/code-review-gate.ts`)**:
-  - CLI Flag `--ext-review-code` (or `--ext-reviewcode`): Intercepts `edit` and `write` tool calls, displaying proposed diffs and file changes.
-  - Provides interactive approval gate: (1) Approve & Apply, (2) Edit in Editor ($EDITOR), (3) Review from me (request agent revisions with feedback), (4) Reject & Abort.
-  - Paired with `--ext-always-on`: Permanently locks code review for the repository.
-  - Paired with `--ext-off`: Deactivates permanent code review lock.
+  - Intercepts `edit` and `write` tool calls, displaying proposed diffs and file previews.
+  - Interactive approval gate: (1) Approve & Apply, (2) Edit in Editor ($EDITOR), (3) Review from me (request agent revisions with feedback), (4) Reject & Abort.
+  - Interactively managed via `/reviewcode`.
 - **Skills Architecture & Zero-Bloat Upstream Pointer**:
   - Upstream ecosystem skills consolidated into a single root pointer file: `~/.pi/agent/skills/vercel.md` pointing to `https://github.com/vercel/vercel-plugin/tree/main/skills`.
   - Guarantees the latest upstream edition on demand without polluting dotfiles with duplicate text.

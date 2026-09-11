@@ -9,19 +9,21 @@
  *     2. Edit in Editor (Open proposal in $EDITOR / Emacs to edit directly before applying)
  *     3. Review from me (Request revisions from the agent with custom feedback)
  *     4. Reject / Abort
- *
- * - Flags:
- *     --ext-reviewcode: Enable code review gate for the active session.
- *     --ext-always-on / --ext-alwayson: Permanently lock code review for repository.
- *                                       Supports `<repo> ->` pointer syntax.
- *     --ext-off:                        Deactivates permanent lock for repository.
- *
+ * - Managed directly via `/reviewcode` slash command with interactive repository selector.
  * - Commands:
- *     `/reviewcode [status|always-on [repo ->]|off [repo ->]]`
+ *     `/reviewcode`            - Open interactive repository picker to enable/disable review gate
+ *     `/reviewcode <repo>`     - Toggle review gate for specific repository (supports pointer syntax)
+ *     `/reviewcode on <repo>`  - Explicitly enable review gate for repository
+ *     `/reviewcode off <repo>` - Explicitly disable review gate for repository
+ *     `/reviewcode status`     - View review gate status across all local repositories
  */
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import * as path from "node:path";
+import {
+  discoverAllUserRepos,
+  type RepoInfo,
+} from "./list-user-repos.ts";
 import {
   getGitRoot,
   isRepoFlagEnabled,
@@ -62,7 +64,7 @@ function renderDiffPreview(filePath: string, edits: EditItem[]): string {
   const lines: string[] = [];
   lines.push("");
   lines.push(`${C.borderActive}╔${doubleHr}╗${C.reset}`);
-  lines.push(`${C.borderActive}║${C.reset}  ${C.bgHeader} 🔍 CODE REVIEW GATE: PROPOSED CODE MODIFICATION ${C.reset}`.padEnd(width + 12) + `${C.borderActive}║${C.reset}`);
+  lines.push(`${C.borderActive}║${C.reset}  ${C.bgHeader} 👁️ CODE REVIEW GATE: PROPOSED CODE MODIFICATION ${C.reset}`.padEnd(width + 12) + `${C.borderActive}║${C.reset}`);
   lines.push(`${C.borderActive}║${C.reset}  ${C.boldCyan}FILE:${C.reset} ${C.bold}${filePath}${C.reset} (${edits.length} edit hunk${edits.length > 1 ? "s" : ""})`.padEnd(width + 10) + `${C.borderActive}║${C.reset}`);
   lines.push(`${C.borderActive}╠${hr}╣${C.reset}`);
 
@@ -108,7 +110,7 @@ function renderWritePreview(filePath: string, content: string): string {
 
   lines.push("");
   lines.push(`${C.borderActive}╔${doubleHr}╗${C.reset}`);
-  lines.push(`${C.borderActive}║${C.reset}  ${C.bgHeader} 🔍 CODE REVIEW GATE: PROPOSED FILE CREATION / REWRITE ${C.reset}`.padEnd(width + 12) + `${C.borderActive}║${C.reset}`);
+  lines.push(`${C.borderActive}║${C.reset}  ${C.bgHeader} 👁️ CODE REVIEW GATE: PROPOSED FILE CREATION / REWRITE ${C.reset}`.padEnd(width + 12) + `${C.borderActive}║${C.reset}`);
   lines.push(`${C.borderActive}║${C.reset}  ${C.boldCyan}FILE:${C.reset} ${C.bold}${filePath}${C.reset} (${contentLines.length} lines, ${content.length} bytes)`.padEnd(width + 10) + `${C.borderActive}║${C.reset}`);
   lines.push(`${C.borderActive}╠${hr}╣${C.reset}`);
 
@@ -129,73 +131,13 @@ function renderWritePreview(filePath: string, content: string): string {
 // Extension Entry Point
 // ============================================================================
 export default function (pi: ExtensionAPI) {
-  // 1. Register CLI Flags
-  pi.registerFlag("ext-reviewcode", {
-    description: "Code Review Gate: interactive review & edit approval before code changes are applied",
-    type: "boolean",
-    default: false,
-  });
-
-  pi.registerFlag("ext-review-code", {
-    description: "Alias for --ext-reviewcode",
-    type: "boolean",
-    default: false,
-  });
-
-  pi.registerFlag("ext-always-on", {
-    description: "Permanently lock paired extension flag for repository (supports <repo> -> pointer)",
-    type: "boolean",
-    default: false,
-  });
-
-  pi.registerFlag("ext-alwayson", {
-    description: "Alias for --ext-always-on",
-    type: "boolean",
-    default: false,
-  });
-
-  pi.registerFlag("ext-off", {
-    description: "Permanently deactivate paired extension flag for repository (supports <repo> -> pointer)",
-    type: "boolean",
-    default: false,
-  });
-
-  pi.registerFlag("repo", {
-    description: "Target repository name or path for paired extension actions (e.g. my-project ->)",
-    type: "string",
-  });
-
-  // Session Start: Handle paired modifier flags and initialize status
+  // Session Start: Initialize status badge for current repository
   pi.on("session_start", async (_event, ctx) => {
-    const flagReviewCode = Boolean(pi.getFlag("ext-reviewcode") || pi.getFlag("ext-review-code"));
-    const alwaysOnVal = pi.getFlag("ext-always-on") ?? pi.getFlag("ext-alwayson");
-    const offVal = pi.getFlag("ext-off");
-    const repoFlagVal = pi.getFlag("repo");
-
-    // Resolve target repo hint (from flag value or --repo flag)
-    const targetHint = (typeof alwaysOnVal === "string" ? alwaysOnVal : null)
-      || (typeof offVal === "string" ? offVal : null)
-      || (typeof repoFlagVal === "string" ? repoFlagVal : null);
-
-    const targetGitRoot = resolveRepoPath(targetHint, ctx.cwd);
-
-    if (flagReviewCode && targetGitRoot) {
-      if (Boolean(alwaysOnVal)) {
-        setRepoFlag(targetGitRoot, "reviewcode", true);
-        ctx.ui.notify(`🔍 Code Review: Repository permanently locked with interactive review gate: ${path.basename(targetGitRoot)}`, "info");
-      } else if (Boolean(offVal)) {
-        setRepoFlag(targetGitRoot, "reviewcode", false);
-        ctx.ui.notify(`🔍 Code Review: Permanent lock removed for: ${path.basename(targetGitRoot)}`, "info");
-      }
-    }
-
     const currentGitRoot = getGitRoot(ctx.cwd);
-    const isLocked = isRepoFlagEnabled(currentGitRoot, "reviewcode");
-    const active = flagReviewCode || isLocked;
-
-    if (active) {
-      const tag = isLocked ? "CODE-REVIEW: LOCKED" : "CODE-REVIEW: ON";
-      ctx.ui.setStatus("reviewcode", `🔍 ${tag}`);
+    if (isRepoFlagEnabled(currentGitRoot, "reviewcode")) {
+      ctx.ui.setStatus("reviewcode", "👁️ REVIEW: ON");
+    } else {
+      ctx.ui.setStatus("reviewcode", undefined);
     }
   });
 
@@ -204,11 +146,7 @@ export default function (pi: ExtensionAPI) {
     if (event.toolName !== "edit" && event.toolName !== "write") return;
 
     const currentGitRoot = getGitRoot(ctx.cwd);
-    const active =
-      Boolean(pi.getFlag("ext-reviewcode") || pi.getFlag("ext-review-code")) ||
-      isRepoFlagEnabled(currentGitRoot, "reviewcode");
-
-    if (!active) return;
+    if (!isRepoFlagEnabled(currentGitRoot, "reviewcode")) return;
     if (!ctx.hasUI) return;
 
     // Case 1: Intercept `edit` tool
@@ -221,7 +159,7 @@ export default function (pi: ExtensionAPI) {
       console.log(renderDiffPreview(filePath, edits));
 
       const reviewChoice = await ctx.ui.select(
-        `🔍 Code Review: ${path.basename(filePath)} (${edits.length} edit hunk${edits.length > 1 ? "s" : ""})`,
+        `👁️ Code Review: ${path.basename(filePath)} (${edits.length} edit hunk${edits.length > 1 ? "s" : ""})`,
         [
           "1. Approve & Apply",
           "2. Edit Code in Editor ($EDITOR / Emacs)",
@@ -240,9 +178,9 @@ export default function (pi: ExtensionAPI) {
       if (reviewChoice.startsWith("2.")) {
         let anyModified = false;
         for (let i = 0; i < edits.length; i++) {
-          const hunkTitle = edits.length > 1 ? `Edit Hunk ${i + 1}/${edits.length}` : `Edit Code Replacement`;
+          const hunkTitle = edits.length > 1 ? `Hunk ${i + 1} of ${edits.length}` : "Proposed Change";
           const edited = await ctx.ui.editor(
-            `Code Review: ${hunkTitle} for ${path.basename(filePath)}`,
+            `Code Review: Edit replacement text for ${hunkTitle} in ${path.basename(filePath)}`,
             edits[i].newText
           );
 
@@ -290,7 +228,7 @@ export default function (pi: ExtensionAPI) {
       console.log(renderWritePreview(filePath, content));
 
       const reviewChoice = await ctx.ui.select(
-        `🔍 Code Review: ${path.basename(filePath)} (${content.split("\n").length} lines)`,
+        `👁️ Code Review: ${path.basename(filePath)} (${content.split("\n").length} lines)`,
         [
           "1. Approve & Write",
           "2. Edit Code in Editor ($EDITOR / Emacs)",
@@ -341,121 +279,191 @@ export default function (pi: ExtensionAPI) {
     }
   });
 
-  // Register command: /reviewcode [status|always-on [repo ->]|off [repo ->]]
+  // Register command: /reviewcode [status|on <repo>|off <repo>|<repo>]
   pi.registerCommand("reviewcode", {
-    description: "Interactive code review gate: view status or manage repository lock",
+    description: "Interactive code review gate: manage repository code review enforcement",
     handler: async (args, ctx) => {
-      const parts = (args || "").trim().split(/\s+/);
+      const trimmed = (args || "").trim();
+      const parts = trimmed.split(/\s+/).filter(Boolean);
       const sub = (parts[0] || "").toLowerCase();
-      const targetHint = parts.slice(1).join(" ") || null;
-      const targetGitRoot = resolveRepoPath(targetHint, ctx.cwd);
 
-      if (sub === "always-on" || sub === "lock" || sub === "on") {
+      // Subcommand: /reviewcode status
+      if (sub === "status") {
+        const allRepos = discoverAllUserRepos();
+        const currentGitRoot = getGitRoot(ctx.cwd);
+        const lines = allRepos.map((r) => {
+          const isCurrent = currentGitRoot && path.resolve(r.path) === path.resolve(currentGitRoot);
+          const isEnabled = isRepoFlagEnabled(r.path, "reviewcode");
+          const badge = isEnabled ? "● ACTIVE" : "○ OFF";
+          const curr = isCurrent ? " [CURRENT]" : "";
+          return `  ${badge.padEnd(12)} ${r.name}${curr} (${r.branch})`;
+        });
+        ctx.ui.notify(`Code Review Gate Status:\n${lines.join("\n")}`, "info");
+        return;
+      }
+
+      // Subcommand: /reviewcode on [repo] / /reviewcode enable [repo]
+      if (sub === "on" || sub === "enable") {
+        const targetHint = parts.slice(1).join(" ") || null;
         const diag = resolveRepoWithDiagnostics(targetHint, ctx.cwd);
+        const targetRoot = diag.gitRoot || (diag.closestMatch && diag.exact ? diag.closestMatch.path : null);
+
+        if (!targetRoot) {
+          ctx.ui.notify(`Code Review: Repository not found "${targetHint || "current"}".`, "error");
+          return;
+        }
+
+        setRepoFlag(targetRoot, "reviewcode", true);
+        const currentGitRoot = getGitRoot(ctx.cwd);
+        if (currentGitRoot && path.resolve(targetRoot) === path.resolve(currentGitRoot)) {
+          ctx.ui.setStatus("reviewcode", "👁️ REVIEW: ON");
+        }
+        ctx.ui.notify(`✔ Code Review: ENABLED for ${path.basename(targetRoot)}.`, "info");
+        return;
+      }
+
+      // Subcommand: /reviewcode off [repo] / /reviewcode disable [repo]
+      if (sub === "off" || sub === "disable") {
+        const targetHint = parts.slice(1).join(" ") || null;
+        const diag = resolveRepoWithDiagnostics(targetHint, ctx.cwd);
+        const targetRoot = diag.gitRoot || (diag.closestMatch && diag.exact ? diag.closestMatch.path : null);
+
+        if (!targetRoot) {
+          ctx.ui.notify(`Code Review: Repository not found "${targetHint || "current"}".`, "error");
+          return;
+        }
+
+        setRepoFlag(targetRoot, "reviewcode", false);
+        const currentGitRoot = getGitRoot(ctx.cwd);
+        if (currentGitRoot && path.resolve(targetRoot) === path.resolve(currentGitRoot)) {
+          ctx.ui.setStatus("reviewcode", undefined);
+        }
+        ctx.ui.notify(`Code Review: DISABLED for ${path.basename(targetRoot)}.`, "info");
+        return;
+      }
+
+      // If a specific repo target was passed directly: /reviewcode <repo>
+      if (trimmed.length > 0) {
+        const diag = resolveRepoWithDiagnostics(trimmed, ctx.cwd);
         let finalRoot = diag.gitRoot;
 
-        if (!finalRoot && ctx.hasUI) {
-          if (diag.closestMatch) {
-            const pick = await ctx.ui.select(
-              `Repo "${diag.targetRaw}" not found. Did you mean "${diag.closestMatch.name}"?`,
-              [
-                `1. Yes, lock "${diag.closestMatch.name}"`,
-                "2. Choose from all repositories",
-                "3. Cancel",
-              ]
-            );
-            if (pick?.startsWith("1.")) {
-              finalRoot = diag.closestMatch.path;
-            } else if (pick?.startsWith("2.")) {
-              const options = diag.allRepos.map((r) => `${r.name} (${r.branch}) -> ${r.path}`);
-              const chosen = await ctx.ui.select("Select target repository:", options);
-              if (chosen) {
-                const found = diag.allRepos.find((r) => r.name === chosen.split(" ")[0]);
-                if (found) finalRoot = found.path;
-              }
-            }
-          } else {
-            const options = diag.allRepos.map((r) => `${r.name} (${r.branch}) -> ${r.path}`);
-            const chosen = await ctx.ui.select("Select repository to lock with Code Review Gate:", options);
-            if (chosen) {
-              const found = diag.allRepos.find((r) => r.name === chosen.split(" ")[0]);
-              if (found) finalRoot = found.path;
-            }
+        if (!finalRoot && diag.closestMatch && diag.exact) {
+          finalRoot = diag.closestMatch.path;
+        }
+
+        if (!finalRoot && ctx.hasUI && diag.closestMatch) {
+          const pick = await ctx.ui.select(
+            `Repo "${diag.targetRaw}" not found. Did you mean "${diag.closestMatch.name}"?`,
+            [
+              `1. Yes, toggle "${diag.closestMatch.name}"`,
+              "2. Cancel",
+            ]
+          );
+          if (pick?.startsWith("1.")) {
+            finalRoot = diag.closestMatch.path;
           }
         }
 
         if (!finalRoot) {
-          ctx.ui.notify(`Code Review: No repository selected.`, "warning");
+          ctx.ui.notify(`Code Review: Could not resolve repository "${trimmed}".`, "error");
           return;
         }
 
-        setRepoFlag(finalRoot, "reviewcode", true);
-        ctx.ui.setStatus("reviewcode", "🔍 CODE-REVIEW: LOCKED");
-        ctx.ui.notify(`✔ Code Review: Permanently locked for ${path.basename(finalRoot)}.`, "info");
+        const currentlyEnabled = isRepoFlagEnabled(finalRoot, "reviewcode");
+        const nextState = !currentlyEnabled;
+        setRepoFlag(finalRoot, "reviewcode", nextState);
+
+        const currentGitRoot = getGitRoot(ctx.cwd);
+        if (currentGitRoot && path.resolve(finalRoot) === path.resolve(currentGitRoot)) {
+          ctx.ui.setStatus("reviewcode", nextState ? "👁️ REVIEW: ON" : undefined);
+        }
+
+        ctx.ui.notify(
+          nextState
+            ? `✔ Code Review: ENABLED for ${path.basename(finalRoot)}.`
+            : `Code Review: DISABLED for ${path.basename(finalRoot)}.`,
+          "info"
+        );
         return;
       }
 
-      if (sub === "off" || sub === "unlock") {
-        const diag = resolveRepoWithDiagnostics(targetHint, ctx.cwd);
-        let finalRoot = diag.gitRoot;
+      // No arguments: Interactive repository selector loop
+      if (!ctx.hasUI) {
+        const allRepos = discoverAllUserRepos();
+        const currentGitRoot = getGitRoot(ctx.cwd);
+        const lines = allRepos.map((r) => {
+          const isCurrent = currentGitRoot && path.resolve(r.path) === path.resolve(currentGitRoot);
+          const isEnabled = isRepoFlagEnabled(r.path, "reviewcode");
+          const badge = isEnabled ? "● ACTIVE" : "○ OFF";
+          const curr = isCurrent ? " [CURRENT]" : "";
+          return `  ${badge.padEnd(12)} ${r.name}${curr} (${r.branch})`;
+        });
+        ctx.ui.notify(`Code Review Gate Status:\n${lines.join("\n")}`, "info");
+        return;
+      }
 
-        if (!finalRoot && ctx.hasUI) {
-          if (diag.closestMatch) {
-            const pick = await ctx.ui.select(
-              `Repo "${diag.targetRaw}" not found. Did you mean "${diag.closestMatch.name}"?`,
-              [
-                `1. Yes, remove lock on "${diag.closestMatch.name}"`,
-                "2. Choose from all repositories",
-                "3. Cancel",
-              ]
-            );
-            if (pick?.startsWith("1.")) {
-              finalRoot = diag.closestMatch.path;
-            } else if (pick?.startsWith("2.")) {
-              const options = diag.allRepos.map((r) => `${r.name} (${r.branch}) -> ${r.path}`);
-              const chosen = await ctx.ui.select("Select target repository:", options);
-              if (chosen) {
-                const found = diag.allRepos.find((r) => r.name === chosen.split(" ")[0]);
-                if (found) finalRoot = found.path;
-              }
-            }
-          } else {
-            const options = diag.allRepos.map((r) => `${r.name} (${r.branch}) -> ${r.path}`);
-            const chosen = await ctx.ui.select("Select repository to remove Code Review lock:", options);
-            if (chosen) {
-              const found = diag.allRepos.find((r) => r.name === chosen.split(" ")[0]);
-              if (found) finalRoot = found.path;
-            }
+      while (true) {
+        const allRepos = discoverAllUserRepos();
+        const currentGitRoot = getGitRoot(ctx.cwd);
+
+        // Sort repos: current repo first, then active repos, then alphabetical
+        const sorted = [...allRepos].sort((a, b) => {
+          const aIsCurrent = currentGitRoot && path.resolve(a.path) === path.resolve(currentGitRoot);
+          const bIsCurrent = currentGitRoot && path.resolve(b.path) === path.resolve(currentGitRoot);
+          if (aIsCurrent) return -1;
+          if (bIsCurrent) return 1;
+
+          const aEnabled = isRepoFlagEnabled(a.path, "reviewcode");
+          const bEnabled = isRepoFlagEnabled(b.path, "reviewcode");
+          if (aEnabled && !bEnabled) return -1;
+          if (!aEnabled && bEnabled) return 1;
+
+          return a.name.toLowerCase().localeCompare(b.name.toLowerCase());
+        });
+
+        const options: string[] = [];
+        const repoMap = new Map<string, RepoInfo>();
+
+        for (const r of sorted) {
+          const isCurrent = currentGitRoot && path.resolve(r.path) === path.resolve(currentGitRoot);
+          const isEnabled = isRepoFlagEnabled(r.path, "reviewcode");
+          const statusBadge = isEnabled ? "● [ACTIVE]    " : "○ [INACTIVE]  ";
+          const currentBadge = isCurrent ? " ⭐ (current)" : "";
+          const action = isEnabled ? "-> Click to Disable" : "-> Click to Enable";
+          const label = `${statusBadge} ${r.name}${currentBadge} (${r.branch}) ${action}`;
+          options.push(label);
+          repoMap.set(label, r);
+        }
+
+        options.push("✔ Done");
+
+        const selection = await ctx.ui.select(
+          "👁️ Code Review Gate: Manage Protected Repositories",
+          options
+        );
+
+        if (!selection || selection === "✔ Done") {
+          break;
+        }
+
+        const chosenRepo = repoMap.get(selection);
+        if (chosenRepo) {
+          const currentlyEnabled = isRepoFlagEnabled(chosenRepo.path, "reviewcode");
+          const nextState = !currentlyEnabled;
+          setRepoFlag(chosenRepo.path, "reviewcode", nextState);
+
+          if (currentGitRoot && path.resolve(chosenRepo.path) === path.resolve(currentGitRoot)) {
+            ctx.ui.setStatus("reviewcode", nextState ? "👁️ REVIEW: ON" : undefined);
           }
-        }
 
-        if (!finalRoot) {
-          ctx.ui.notify(`Code Review: No repository selected.`, "warning");
-          return;
+          ctx.ui.notify(
+            nextState
+              ? `✔ Code Review: ENABLED for ${chosenRepo.name}. Edits/writes will prompt for review.`
+              : `Code Review: DISABLED for ${chosenRepo.name}.`,
+            "info"
+          );
         }
-
-        setRepoFlag(finalRoot, "reviewcode", false);
-        ctx.ui.setStatus("reviewcode", "");
-        ctx.ui.notify(`Code Review: Removed permanent lock for ${path.basename(finalRoot)}.`, "info");
-        return;
       }
-
-      // Default: Status
-      const currentGitRoot = getGitRoot(ctx.cwd);
-      const isLocked = isRepoFlagEnabled(currentGitRoot, "reviewcode");
-      const isFlagOn = Boolean(pi.getFlag("ext-reviewcode") || pi.getFlag("ext-review-code"));
-      const repoName = currentGitRoot ? path.basename(currentGitRoot) : "none";
-
-      const statusMsg = [
-        `Code Review Gate Status:`,
-        `  • Active for session (--ext-reviewcode): ${isFlagOn ? "YES" : "NO"}`,
-        `  • Current Repo (${repoName}): ${isLocked ? "LOCKED (Always-On)" : "NOT LOCKED"}`,
-        `Commands:`,
-        `  /reviewcode always-on [repo ->]  - Permanently lock code review for repo`,
-        `  /reviewcode off [repo ->]        - Disable permanent lock for repo`,
-      ].join("\n");
-
-      ctx.ui.notify(statusMsg, "info");
     },
   });
 }

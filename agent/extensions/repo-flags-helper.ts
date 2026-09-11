@@ -160,20 +160,32 @@ export function resolveRepoPath(target: unknown, cwd: string): string | null {
 
 export function isRepoFlagEnabled(gitRoot: string | null, flagName: string): boolean {
   if (!gitRoot) return false;
+  const canonical = path.resolve(gitRoot);
   const config = loadRepoFlags();
-  return Boolean(config.repos[gitRoot] && config.repos[gitRoot][flagName]);
+  return Boolean(
+    (config.repos[canonical] && config.repos[canonical][flagName]) ||
+    (config.repos[gitRoot] && config.repos[gitRoot][flagName])
+  );
 }
 
 export function setRepoFlag(gitRoot: string, flagName: string, enabled: boolean): void {
+  const canonical = path.resolve(gitRoot);
   const config = loadRepoFlags();
-  config.repos[gitRoot] = config.repos[gitRoot] || {};
+  config.repos[canonical] = config.repos[canonical] || {};
   if (enabled) {
-    config.repos[gitRoot][flagName] = true;
+    config.repos[canonical][flagName] = true;
   } else {
-    delete config.repos[gitRoot][flagName];
-    if (Object.keys(config.repos[gitRoot]).length === 0) {
-      delete config.repos[gitRoot];
+    delete config.repos[canonical][flagName];
+    if (Object.keys(config.repos[canonical]).length === 0) {
+      delete config.repos[canonical];
     }
   }
+  if (gitRoot !== canonical && config.repos[gitRoot]) {
+    delete config.repos[gitRoot];
+  }
   saveRepoFlags(config);
+}
+
+export default function () {
+  // Helper module loaded by Pi extensions
 }

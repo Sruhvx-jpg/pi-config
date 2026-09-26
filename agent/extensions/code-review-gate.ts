@@ -145,8 +145,12 @@ export default function (pi: ExtensionAPI) {
   pi.on("tool_call", async (event, ctx) => {
     if (event.toolName !== "edit" && event.toolName !== "write") return;
 
-    const currentGitRoot = getGitRoot(ctx.cwd);
-    if (!isRepoFlagEnabled(currentGitRoot, "reviewcode")) return;
+    const rawPath = String(event.input?.path || "");
+    const resolvedPath = path.isAbsolute(rawPath) ? rawPath : path.resolve(ctx.cwd, rawPath);
+    const fileDir = path.dirname(resolvedPath);
+    const targetGitRoot = getGitRoot(fileDir) || getGitRoot(ctx.cwd);
+
+    if (!isRepoFlagEnabled(targetGitRoot, "reviewcode")) return;
     if (!ctx.hasUI) return;
 
     // Case 1: Intercept `edit` tool
@@ -156,10 +160,10 @@ export default function (pi: ExtensionAPI) {
 
       if (!filePath || edits.length === 0) return;
 
-      console.log(renderDiffPreview(filePath, edits));
+      const preview = renderDiffPreview(filePath, edits);
 
       const reviewChoice = await ctx.ui.select(
-        `👁️ Code Review: ${path.basename(filePath)} (${edits.length} edit hunk${edits.length > 1 ? "s" : ""})`,
+        `${preview}\n\nSelect review action:`,
         [
           "1. Approve & Apply",
           "2. Edit Code in Editor ($EDITOR / Emacs)",
@@ -168,8 +172,16 @@ export default function (pi: ExtensionAPI) {
         ]
       );
 
+      // 4. Reject & Abort or Cancel/Escape
+      if (!reviewChoice || reviewChoice.startsWith("4.")) {
+        return {
+          block: true,
+          reason: `User rejected proposed code edit on ${filePath}. Do not apply this change.`,
+        };
+      }
+
       // 1. Approve & Apply
-      if (!reviewChoice || reviewChoice.startsWith("1.")) {
+      if (reviewChoice.startsWith("1.")) {
         ctx.ui.notify(`✔ [CODE REVIEW] Approved: ${path.basename(filePath)}`, "info");
         return;
       }
@@ -225,10 +237,10 @@ export default function (pi: ExtensionAPI) {
 
       if (!filePath) return;
 
-      console.log(renderWritePreview(filePath, content));
+      const preview = renderWritePreview(filePath, content);
 
       const reviewChoice = await ctx.ui.select(
-        `👁️ Code Review: ${path.basename(filePath)} (${content.split("\n").length} lines)`,
+        `${preview}\n\nSelect review action:`,
         [
           "1. Approve & Write",
           "2. Edit Code in Editor ($EDITOR / Emacs)",
@@ -237,8 +249,16 @@ export default function (pi: ExtensionAPI) {
         ]
       );
 
+      // 4. Reject & Abort or Cancel/Escape
+      if (!reviewChoice || reviewChoice.startsWith("4.")) {
+        return {
+          block: true,
+          reason: `User rejected proposed write to ${filePath}. Do not create/overwrite this file.`,
+        };
+      }
+
       // 1. Approve & Write
-      if (!reviewChoice || reviewChoice.startsWith("1.")) {
+      if (reviewChoice.startsWith("1.")) {
         ctx.ui.notify(`✔ [CODE REVIEW] Approved: ${path.basename(filePath)}`, "info");
         return;
       }

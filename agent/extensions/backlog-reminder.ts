@@ -6,9 +6,9 @@
  *
  * Features:
  * - Appears on fresh session startup (new / startup).
- * - Keyboard shortcut Alt+b to toggle the backlog widget on/off anytime.
+ * - Keyboard shortcut Alt+Shift+B to toggle the backlog widget on/off anytime.
  * - Slash command `/backlog` to view, toggle, add, remove, or clear items:
- *     Alt+b               -> toggle backlog widget visibility
+ *     Alt+Shift+B               -> toggle backlog widget visibility
  *     /backlog            -> list pending items / show status
  *     /backlog toggle     -> toggle widget visibility
  *     /backlog add <task> -> add a new backlog item
@@ -51,7 +51,7 @@ function saveBacklog(items: BacklogItem[]): void {
 function renderWidgetLines(items: BacklogItem[]): string[] {
   if (items.length === 0) return [];
   const lines: string[] = [
-    `📌 ACTIVE BACKLOG (${items.length} item${items.length === 1 ? "" : "s"} | Alt+b to toggle):`,
+    `📌 ACTIVE BACKLOG (${items.length} item${items.length === 1 ? "" : "s"} | Alt+Shift+B to toggle):`,
   ];
   for (const item of items) {
     lines.push(`  [${item.id}] ${item.text}`);
@@ -77,14 +77,14 @@ function toggleWidget(ctx: ExtensionContext): void {
 
   if (isVisible) {
     hideWidget(ctx);
-    ctx.ui.notify("Backlog hidden. (Alt+b to restore)", "info");
+    ctx.ui.notify("Backlog hidden. (Alt+Shift+B to restore)", "info");
   } else {
     if (items.length === 0) {
       ctx.ui.notify("No pending backlog items.", "info");
       return;
     }
     showWidget(ctx, items);
-    ctx.ui.notify(`Backlog visible (${items.length} items | Alt+b to hide).`, "info");
+    ctx.ui.notify(`Backlog visible (${items.length} items | Alt+Shift+B to hide).`, "info");
   }
 }
 
@@ -107,7 +107,7 @@ export default function backlogReminderExtension(pi: ExtensionAPI) {
       if (items.length > 0) {
         showWidget(ctx, items);
         if (ctx.hasUI) {
-          ctx.ui.notify(`📌 ${items.length} backlog items pending! (Alt+b to toggle)`, "info");
+          ctx.ui.notify(`📌 ${items.length} backlog items pending! (Alt+Shift+B to toggle)`, "info");
         }
         return;
       }
@@ -117,8 +117,8 @@ export default function backlogReminderExtension(pi: ExtensionAPI) {
     hideWidget(ctx);
   });
 
-  // 2. Register keyboard shortcut Alt+b to toggle visibility
-  pi.registerShortcut("alt+b", {
+  // 2. Register keyboard shortcut Alt+Shift+B to toggle visibility
+  pi.registerShortcut("alt+shift+b", {
     description: "Toggle backlog reminder widget",
     handler: async (ctx) => {
       toggleWidget(ctx);
@@ -154,7 +154,7 @@ export default function backlogReminderExtension(pi: ExtensionAPI) {
           return;
         }
         const text = items.map((it) => `[${it.id}] ${it.text}`).join("\n");
-        ctx.ui.notify(`Active Backlog (${items.length} items | Alt+b to toggle):\n${text}`, "info");
+        ctx.ui.notify(`Active Backlog (${items.length} items | Alt+Shift+B to toggle):\n${text}`, "info");
         return;
       }
 

@@ -18,12 +18,42 @@ import {
   createReadToolDefinition,
   createWriteToolDefinition,
   type ExtensionAPI,
+  type ExtensionCommandContext,
   type ToolRenderContext,
 } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
 
-function formatIntentPrefix(intent: unknown, theme: any): string {
+const CONFIG_FILE = path.join(os.homedir(), ".pi/agent/step-intent.json");
+
+interface StepIntentConfig {
+  enabled: boolean;
+}
+
+function loadConfig(): StepIntentConfig {
+  try {
+    if (fs.existsSync(CONFIG_FILE)) {
+      const data = JSON.parse(fs.readFileSync(CONFIG_FILE, "utf-8"));
+      if (typeof data.enabled === "boolean") {
+        return { enabled: data.enabled };
+      }
+    }
+  } catch {}
+  return { enabled: true };
+}
+
+function saveConfig(config: StepIntentConfig): void {
+  try {
+    fs.mkdirSync(path.dirname(CONFIG_FILE), { recursive: true });
+    fs.writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2), "utf-8");
+  } catch {}
+}
+
+function formatIntentPrefix(intent: unknown, theme: any, enabled: boolean): string {
+  if (!enabled) return "";
   if (typeof intent !== "string") return "";
   const trimmed = intent.trim();
   if (!trimmed) return "";
@@ -34,6 +64,7 @@ function formatIntentPrefix(intent: unknown, theme: any): string {
 
 export default function (pi: ExtensionAPI) {
   const cwd = process.cwd();
+  let config = loadConfig();
 
   // ==========================================================================
   // 1. Read Tool with Intent
@@ -69,8 +100,8 @@ export default function (pi: ExtensionAPI) {
 
     renderCall(args, theme, context: ToolRenderContext<any, any>) {
       const comp = baseRead.renderCall(args, theme, context);
-      if (comp && typeof (comp as any).setText === "function") {
-        const prefix = formatIntentPrefix(args?.intent, theme);
+      if (config.enabled && comp && typeof (comp as any).setText === "function") {
+        const prefix = formatIntentPrefix(args?.intent, theme, config.enabled);
         if (prefix) {
           const raw = (comp as any).text || "";
           (comp as any).setText(`${prefix}${raw}`);
@@ -117,8 +148,8 @@ export default function (pi: ExtensionAPI) {
 
     renderCall(args, theme, context: ToolRenderContext<any, any>) {
       const comp = baseBash.renderCall(args, theme, context);
-      if (comp && typeof (comp as any).setText === "function") {
-        const prefix = formatIntentPrefix(args?.intent, theme);
+      if (config.enabled && comp && typeof (comp as any).setText === "function") {
+        const prefix = formatIntentPrefix(args?.intent, theme, config.enabled);
         if (prefix) {
           const raw = (comp as any).text || "";
           (comp as any).setText(`${prefix}${raw}`);
@@ -165,8 +196,8 @@ export default function (pi: ExtensionAPI) {
 
     renderCall(args, theme, context: ToolRenderContext<any, any>) {
       const comp = baseWrite.renderCall(args, theme, context);
-      if (comp && typeof (comp as any).setText === "function") {
-        const prefix = formatIntentPrefix(args?.intent, theme);
+      if (config.enabled && comp && typeof (comp as any).setText === "function") {
+        const prefix = formatIntentPrefix(args?.intent, theme, config.enabled);
         if (prefix) {
           const raw = (comp as any).text || "";
           (comp as any).setText(`${prefix}${raw}`);
@@ -217,8 +248,8 @@ export default function (pi: ExtensionAPI) {
 
     renderCall(args, theme, context: ToolRenderContext<any, any>) {
       const comp = baseGrep.renderCall(args, theme, context);
-      if (comp && typeof (comp as any).setText === "function") {
-        const prefix = formatIntentPrefix(args?.intent, theme);
+      if (config.enabled && comp && typeof (comp as any).setText === "function") {
+        const prefix = formatIntentPrefix(args?.intent, theme, config.enabled);
         if (prefix) {
           const raw = (comp as any).text || "";
           (comp as any).setText(`${prefix}${raw}`);
@@ -265,8 +296,8 @@ export default function (pi: ExtensionAPI) {
 
     renderCall(args, theme, context: ToolRenderContext<any, any>) {
       const comp = baseFind.renderCall(args, theme, context);
-      if (comp && typeof (comp as any).setText === "function") {
-        const prefix = formatIntentPrefix(args?.intent, theme);
+      if (config.enabled && comp && typeof (comp as any).setText === "function") {
+        const prefix = formatIntentPrefix(args?.intent, theme, config.enabled);
         if (prefix) {
           const raw = (comp as any).text || "";
           (comp as any).setText(`${prefix}${raw}`);
@@ -312,8 +343,8 @@ export default function (pi: ExtensionAPI) {
 
     renderCall(args, theme, context: ToolRenderContext<any, any>) {
       const comp = baseLs.renderCall(args, theme, context);
-      if (comp && typeof (comp as any).setText === "function") {
-        const prefix = formatIntentPrefix(args?.intent, theme);
+      if (config.enabled && comp && typeof (comp as any).setText === "function") {
+        const prefix = formatIntentPrefix(args?.intent, theme, config.enabled);
         if (prefix) {
           const raw = (comp as any).text || "";
           (comp as any).setText(`${prefix}${raw}`);
@@ -324,6 +355,53 @@ export default function (pi: ExtensionAPI) {
 
     renderResult(result, options, theme, context) {
       return baseLs.renderResult(result, options, theme, context);
+    },
+  });
+
+  // ==========================================================================
+  // 7. Interactive /intent Command
+  // ==========================================================================
+  pi.registerCommand("intent", {
+    description: "Toggle step intent badges in chat transcript (on/off)",
+    async handler(args, ctx: ExtensionCommandContext) {
+      const sub = (args || "").trim().toLowerCase();
+      if (sub === "on") {
+        config.enabled = true;
+        saveConfig(config);
+        ctx.ui?.notify("⚡ Step Intent badges: ON", "info");
+        return;
+      }
+      if (sub === "off") {
+        config.enabled = false;
+        saveConfig(config);
+        ctx.ui?.notify("⚡ Step Intent badges: OFF", "info");
+        return;
+      }
+
+      if (ctx.hasUI) {
+        const current = config.enabled ? "ON" : "OFF";
+        const choice = await ctx.ui.select(
+          `Step Intent Badges (Current: ${current})`,
+          [
+            "1. ON  - Display [Intent: ...] badges on tool calls",
+            "2. OFF - Hide [Intent: ...] badges",
+          ]
+        );
+        if (!choice) return;
+        if (choice.startsWith("1")) {
+          config.enabled = true;
+          saveConfig(config);
+          ctx.ui.notify("⚡ Step Intent badges: ON", "info");
+        } else if (choice.startsWith("2")) {
+          config.enabled = false;
+          saveConfig(config);
+          ctx.ui.notify("⚡ Step Intent badges: OFF", "info");
+        }
+        return;
+      }
+
+      const current = config.enabled ? "ON" : "OFF";
+      console.log(`Step Intent badges are currently ${current}. Use /intent on or /intent off.`);
     },
   });
 }

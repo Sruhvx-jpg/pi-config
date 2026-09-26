@@ -2,9 +2,20 @@
   "packages": [
     "npm:pi-antigravity"
   ],
-  "lastChangelogVersion": "0.85.1",
+  "lastChangelogVersion": "0.87.1",
   "theme": "nvim-dark",
   "defaultProvider": "antigravity",
   "defaultModel": "gemini-3.7-flash",
-  "defaultThinkingLevel": "high"
+  "defaultThinkingLevel": "high",
+  "subagents": {
+    "agentOverrides": {
+      "researcher": {
+        "model": "antigravity/gemini-3.7-flash"
+      },
+      "evidence-auditor": {
+        "model": "antigravity/gemini-3.8-flash"
+      }
+    }
+  },
+  "hideThinkingBlock": true
 }

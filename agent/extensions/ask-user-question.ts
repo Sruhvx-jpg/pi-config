@@ -12,6 +12,7 @@ import {
 	Key,
 	matchesKey,
 	Text,
+	truncateToWidth,
 	visibleWidth,
 	wrapTextWithAnsi,
 } from "@earendil-works/pi-tui";
@@ -563,8 +564,9 @@ async function executeSingleQuestion(
 				}
 				lines.push(theme.fg("accent", "─".repeat(renderWidth)));
 
-				cachedLines = lines;
-				return lines;
+				const finalLines = lines.map((l) => (visibleWidth(l) > renderWidth ? truncateToWidth(l, renderWidth, "") : l));
+				cachedLines = finalLines;
+				return finalLines;
 			}
 
 			return {
@@ -948,8 +950,9 @@ async function executeMultiQuestion(ctx: ExtensionContext, questions: QuestionDe
 			}
 			lines.push(theme.fg("accent", "─".repeat(renderWidth)));
 
-			cachedLines = lines;
-			return lines;
+			const finalLines = lines.map((l) => (visibleWidth(l) > renderWidth ? truncateToWidth(l, renderWidth, "") : l));
+			cachedLines = finalLines;
+			return finalLines;
 		}
 
 		return {

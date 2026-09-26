@@ -41,3 +41,9 @@ bin/rg
 .DS_Store
 generated-images/
 1/
+crashes.json
+agent/crashes.json
+step-intent.json
+agent/step-intent.json
+*-followups.md
+*.followup.md

@@ -20,23 +20,54 @@ import * as cp from "node:child_process";
 const approvedCommands = new Set<string>();
 
 /**
- * Checks if a bash command performs a modifying GitHub action.
+ * Checks if a bash command performs a modifying or interacting GitHub action.
+ * Deny-by-default: ANY gh command that is not explicitly in the safe read-only whitelist is intercepted.
  */
 function isModifyingGhCommand(command: string): boolean {
   if (!command) return false;
-  // Match commands like:
-  // gh pr create, gh pr edit, gh pr comment, gh pr close, gh pr reopen, gh pr merge, gh pr ready
-  // gh issue create, gh issue edit, gh issue comment, gh issue close, gh issue reopen
-  // gh release create, gh release edit, gh release delete
-  // gh api with POST, PUT, PATCH, DELETE
-  const modifyingPatterns = [
-    /\bgh\s+pr\s+(create|edit|comment|close|reopen|merge|ready)\b/i,
-    /\bgh\s+issue\s+(create|edit|comment|close|reopen)\b/i,
-    /\bgh\s+release\s+(create|edit|delete)\b/i,
-    /\bgh\s+api\b.*(-X|--method)\s*(POST|PUT|PATCH|DELETE)\b/i,
-  ];
+  if (!/\bgh\b/.test(command)) return false;
 
-  return modifyingPatterns.some((pattern) => pattern.test(command));
+  // 1. Explicit modifying subcommands / verbs
+  const modifyingVerbs = /\bgh\s+(pr|issue|release|repo|gist|secret|variable|label|workflow|project)\s+(create|edit|comment|close|reopen|merge|ready|review|delete|fork|archive|unarchive|rename|set|run|enable|disable|upload)\b/i;
+  if (modifyingVerbs.test(command)) return true;
+
+  // 2. Any mutating gh api calls
+  if (/\bgh\s+api\b/i.test(command)) {
+    // Explicit mutation HTTP methods
+    if (/(-X|--method)\s*(POST|PUT|PATCH|DELETE)\b/i.test(command)) return true;
+    // Field/input arguments default to POST in gh api
+    if (/(?:^|\s)(-f|-F|--field|--raw-field|--input)\b/i.test(command)) {
+      const isSafeGraphqlQuery = /graphql\b/i.test(command) &&
+        /(-f|--field)\s+query=['"]\s*query\b/i.test(command) &&
+        !/\bmutation\b/i.test(command);
+      if (!isSafeGraphqlQuery) return true;
+    }
+  }
+
+  // 3. Deny-by-default: inspect all gh subcommands and verbs
+  const ghMatches = command.matchAll(/\bgh\s+([a-z0-9_-]+)(?:\s+([a-z0-9_-]+))?/gi);
+  for (const match of ghMatches) {
+    const sub = (match[1] || "").toLowerCase();
+    const verb = (match[2] || "").toLowerCase();
+
+    // Whitelisted safe read-only subcommands
+    if (sub === "pr" && ["view", "list", "diff", "checks", "status"].includes(verb)) continue;
+    if (sub === "issue" && ["view", "list", "status"].includes(verb)) continue;
+    if (sub === "release" && ["view", "list", "download"].includes(verb)) continue;
+    if (sub === "repo" && ["view", "clone"].includes(verb)) continue;
+    if (sub === "run" && ["view", "list", "watch"].includes(verb)) continue;
+    if (sub === "cache" && ["list"].includes(verb)) continue;
+    if (sub === "auth" && ["status"].includes(verb)) continue;
+    if (sub === "search") continue;
+    if (sub === "browse") continue;
+    if (sub === "version" || sub === "--version" || sub === "help" || sub === "--help") continue;
+    if (sub === "api") continue; // Handled above
+
+    // Any unlisted subcommand or verb is treated as modifying
+    return true;
+  }
+
+  return false;
 }
 
 /**
@@ -56,6 +87,10 @@ function parseGhDetails(command: string): {
   if (prMatch) action = `PR ${prMatch[1].toUpperCase()}`;
   else if (issueMatch) action = `Issue ${issueMatch[1].toUpperCase()}`;
   else if (releaseMatch) action = `Release ${releaseMatch[1].toUpperCase()}`;
+  else if (/\bgh\s+api\b/i.test(command)) {
+    const methodMatch = command.match(/(?:-X|--method)\s+([A-Z]+)/i);
+    action = methodMatch ? `API ${methodMatch[1].toUpperCase()}` : "API Mutation (POST)";
+  }
 
   // Extract repo if specified via -R or --repo
   const repoMatch = command.match(/(?:-R|--repo)\s+([^\s"']+)/i);
@@ -65,14 +100,19 @@ function parseGhDetails(command: string): {
   let target = repoMatch ? repoMatch[1] : "";
   if (numberMatch) {
     target = target ? `${target}#${numberMatch[1]}` : `#${numberMatch[1]}`;
+  } else if (!target && /\bgh\s+api\b/i.test(command)) {
+    const endpointMatch = command.match(/\bgh\s+api(?:\s+-[^\s]+|\s+--[^\s]+)*(?:\s+([a-zA-Z0-9_\-\/]+))/);
+    if (endpointMatch && !endpointMatch[1].startsWith("-")) {
+      target = endpointMatch[1];
+    }
   }
 
-  // Extract title if present: -t "..." or --title "..."
-  const titleMatch = command.match(/(?:-t|--title)\s+(?:"([^"]*)"|'([^']*)'|([^\s]+))/i);
+  // Extract title if present: -t "..." or --title "..." or -f title="..."
+  const titleMatch = command.match(/(?:-t|--title|-f\s+title=)\s*(?:"([^"]*)"|'([^']*)'|([^\s]+))/i);
   const title = titleMatch ? (titleMatch[1] || titleMatch[2] || titleMatch[3]) : undefined;
 
-  // Extract body if present: -b "..." or --body "..."
-  const bodyMatch = command.match(/(?:-b|--body)\s+(?:"([^"]*)"|'([^']*)'|([^\s]+))/i);
+  // Extract body if present: -b "..." or --body "..." or -f body="..."
+  const bodyMatch = command.match(/(?:-b|--body|-f\s+body=)\s*(?:"([^"]*)"|'([^']*)'|([^\s]+))/i);
   let body = bodyMatch ? (bodyMatch[1] || bodyMatch[2] || bodyMatch[3]) : undefined;
 
   // Check for heredoc bodies: << 'EOF' ... EOF

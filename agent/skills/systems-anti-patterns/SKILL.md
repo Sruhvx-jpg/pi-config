@@ -242,63 +242,49 @@ Whenever auditing, reviewing, or writing networking, parser, framing, or protoco
 
 ---
 
-## 8. RFC Compliance & Protocol Edge Case Scan Methodology
+## 8. Dynamic Multi-Dimensional Systems Audit Methodology
 
-Use this systematic audit process to uncover missing edge cases across any protocol parser or spec implementation:
+The scan suite directs the agent to perform an autonomous, multi-dimensional audit tailored dynamically to the target codebase without hardcoded assumptions. Audit across all five foundational systems layers:
 
-### Step 0: Autonomous Protocol & RFC Resolution
-* **Action**: Dynamically discover all governing RFCs, standard updates, errata, and extension specs by analyzing the target subsystem's wire format, framing constants, handshake negotation, and protocol state transitions.
-* **Scan Target**: Resolve the complete dependency graph of all applicable RFCs without hardcoded assumptions.
+### Layer 0: Autonomous Specification & Domain Discovery
+* **Action**: Dynamically resolve all governing specifications, protocol standards, IETF RFCs, storage contracts, and data format definitions by inspecting wire framing, headers, APIs, and dependencies.
+* **Scope**: Identify every applicable RFC (network/framing), cloud storage contract (S3/GCS/Azure), OS API model (epoll/kqueue/io_uring/signals), and serialization standard (UTF-8, Parquet, Protobuf).
 
-### Step 1: Normative Clause Extraction & Diff Matrix
-* **Action**: Extract every `MUST`, `MUST NOT`, `REQUIRED`, `SHALL`, `SHALL NOT`, `SHOULD NOT` clause from the relevant RFC sections.
-* **Scan Target**: Map each normative clause directly to a parser branch, state transition, or guard. If a `MUST [reject]` clause has no corresponding error branch in the parser, mark it as a spec violation gap.
+### Layer 1: Protocol & Specification Invariant Matrix
+* **Normative Clause Extraction**: Map every `MUST`, `MUST NOT`, `REQUIRED`, `SHALL NOT` clause directly to code branches. Mark missing rejections as spec violations.
+* **ABNF & Framing Strictness**: Check exact delimiters, forbidden control characters, whitespace stripping, and smuggling/desync vectors.
+* **Multiplicity & Conflicts**: Verify illegal duplicate headers/frames and mutually exclusive fields are rejected.
+* **Version Partitioning**: Ensure deprecated features are barred and newer features are version-gated.
+* **Error Fidelity**: Verify exact specification-mandated response codes and transport teardown semantics.
 
-### Step 2: ABNF Grammar vs Parser State Matrix
-* **Action**: Compare the formal ABNF specification against the token extraction logic.
-* **Checks**:
-  - **Delimiters & Whitespace**: Verify parser enforces exact delimiters (e.g. single `SP` vs `\t` vs multiple `SP`).
-  - **Character Set Boundaries**: Verify forbidden octets, control chars (`0x00`-`0x1F`, `0x7F`), and unencoded characters trigger explicit rejection.
-  - **Leading/Trailing Garbage**: Verify no unhandled prefixes or trailing bytes bleed into adjacent messages (smuggling vectors).
+### Layer 2: Concurrency, Cancellation & Async Safety
+* **Async Cancellation Safety**: Audit all `.await` points to verify state remains consistent if futures are dropped mid-execution. Prevent orphaned network/file descriptors and dangling locks.
+* **Backpressure & Buffer Bounds**: Detect unbounded queues (`VecDeque`, unbounded mpsc), unconstrained `tokio::spawn` loops, and lazy streams dropped without consumption.
+* **Reactor Thread Hygiene**: Verify no blocking CPU/disk operations stall async event loops.
 
-### Step 3: Multiplicity & Conflicting Field Matrix
-* **Action**: Test the parser matrix across field frequencies:
-  - **Zero Instances (0x)**: Is a mandatory field rejected when omitted?
-  - **Single Instance (1x)**: Standard happy path.
-  - **Multiple Instances (>1x)**: Are singleton fields rejected on duplication rather than silently picking first/last?
-  - **Mutually Exclusive Fields**: Are conflicting fields (e.g. `TE` + `CL`) detected and rejected?
+### Layer 3: Memory Safety, Bit Widths & State Machines
+* **Architecture & Bit-Width Invariants**: Flag 64-bit to 32-bit truncations (`u64 as usize`), integer overflows in slice indexing or capacity allocations, and bitmask sign extensions.
+* **Zero-Copy & Heap Churn**: Audit buffer lifetimes, reference-counted byte slicing (`bytes::Bytes`), and hot-loop allocations.
+* **State Machine Invariants**: Check guards against double-close, read/write after termination, out-of-order frame sequences, and illegal re-entry.
+* **Drop & Panic Invariants**: Guarantee infallible `Drop` implementations and clean aborts on low-level memory corruption.
 
-### Step 4: Version-Divergent Semantic Verification
-* **Action**: Verify version-specific protocol differences are strictly partitioned.
-* **Checks**:
-  - Are legacy/deprecated features (e.g. line folding `obs-fold`, HTTP/0.9) explicitly rejected in modern protocol modes?
-  - Are newer features properly gated and rejected when received in older protocol modes (e.g. chunked transfer in HTTP/1.0)?
-
-### Step 5: Spec-Mandated Error Status & Connection Teardown
-* **Action**: Verify the exact error response code and connection lifecycle match spec requirements.
-* **Checks**:
-  - Does the parser return the exact status code specified by the RFC (e.g. `400 Bad Request`, `501 Not Implemented`) instead of generic `500 Internal Server Error` or silent fallback?
-  - Does the parser properly close the transport connection on framing/delimiter corruption?
+### Layer 4: Error Mapping, Security & Resource Bounds
+* **Error Semantics**: Prevent misleading error kinds (e.g., auth failures mapped to data invalid).
+* **Resource Exhaustion (DoS)**: Guard against huge memory pre-allocations from untrusted frame length headers, uncompressed payload bombs, and unbounded timeouts.
+* **Boundary Validation**: Enforce strict validation on nonces, hashes, UTF-8 strings, and stripped prefixes before parsing payloads.
 
 ---
 
-## Quick Audit Checklist (When Scanning Codebases)
+## Comprehensive Systems Audit Checklist
 
-- [ ] **RFC Normative Scan**: Are all `MUST` / `MUST NOT` clauses mapped to explicit parser branches?
-- [ ] **ABNF Delimiter Enforcement**: Are strict delimiters, whitespace rules, and forbidden characters enforced?
-- [ ] **Multiplicity Matrix**: Are missing mandatory fields and illegal duplicate fields rejected?
-- [ ] **Conflicting Fields**: Are mutually exclusive protocol fields detected and rejected?
-- [ ] **Version Branching**: Are protocol version semantic differences strictly gated?
-- [ ] **Error Status Fidelity**: Does error mapping emit the exact RFC-mandated status code (e.g. `400`)?
-- [ ] **S3 Errors**: Are `401/403` errors preserved or mapped to `PermissionDenied` / `Unexpected` instead of `DataInvalid`?
-- [ ] **S3 Multipart**: Is 0-byte write handled without sending empty multipart `complete()`?
-- [ ] **S3 Chunks**: Are all non-final multipart chunks $\ge 5\text{ MiB}$?
-- [ ] **S3 Drop Guard**: Does the multipart writer abort on error/drop?
-- [ ] **Streams**: Are all `Stream<Item = Result<T>>` actively polled and errors propagated?
-- [ ] **Stream Memory**: Is the stream processed in bounded chunks rather than `.collect::<Vec<_>>()`?
-- [ ] **Go Line-of-Sight**: Are all `if err != nil` early returns with zero `else` branches?
-- [ ] **Double Expansion**: Are resolved secrets/variables treated as opaque literals without secondary `os.ExpandEnv` passes?
-- [ ] **BOM/Whitespace Slice Guard**: Is `len(b) > 0` checked before indexing byte slices after stripping?
-- [ ] **DB Row Iteration**: Is `rows.Err()` checked and `defer rows.Close()` called after every `for rows.Next()` loop?
-- [ ] **Stream/Compression Writer**: Are stream/gzip writers closed via `defer` and bypassed for bodyless methods (`HEAD`)?
-- [ ] **Zero Panics in Drop**: Are drop implementations infallible with `tracing::warn!`?
+- [ ] **Autonomous Spec Discovery**: Are all governing RFCs, protocol standards, and storage contracts resolved?
+- [ ] **Normative Spec Branches**: Are all `MUST` / `MUST NOT` constraints mapped to explicit error branches?
+- [ ] **Framing & ABNF Strictness**: Are strict delimiters, whitespace rules, and forbidden octets enforced?
+- [ ] **Cancellation Safety**: Are sockets, handles, and locks safely cleaned up if async futures are cancelled?
+- [ ] **Backpressure & Queues**: Are all channels, streams, and internal queues strictly bounded?
+- [ ] **Bit-Width & Truncation**: Are 64-bit lengths safely converted to `usize` without 32-bit overflow?
+- [ ] **State Machine Soundness**: Are duplicate close calls, out-of-sequence events, and re-entry guarded?
+- [ ] **Error Mapping Fidelity**: Are error variants preserved with exact semantic meaning and spec status codes?
+- [ ] **Unbounded Buffering**: Is stream collection bounded (`chunks`/`ready_chunks`) instead of `.collect::<Vec<_>>()`?
+- [ ] **Resource Limits (DoS)**: Are max frame sizes, payload allocations, and timeouts strictly enforced before processing?
+- [ ] **Infallible Drop**: Are all `Drop` implementations panic-free with non-blocking logging?

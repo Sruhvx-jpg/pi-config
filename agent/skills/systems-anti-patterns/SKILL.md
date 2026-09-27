@@ -109,15 +109,11 @@ Use this guide whenever reviewing, writing, refactoring, or auditing systems cod
 
 ---
 
-## 3. Protocol & Networking Audits (Dynamic Parallel RFC Scan & Auto-Discovery)
+## 3. Protocol & Networking Audits (Dynamic Parallel RFC Discovery & Audit)
 
 Whenever auditing, reviewing, or writing networking, parser, framing, or protocol code:
-1. **Auto-Discover Governing RFCs**: Detect the protocol stack and construct the complete RFC dependency set:
-   - **HTTP/1.1**: RFC 9112 (HTTP/1.1), RFC 9110 (HTTP Semantics), RFC 3986 (URI).
-   - **HTTP/2**: RFC 9113 (HTTP/2), RFC 7541 (HPACK).
-   - **HTTP/3**: RFC 9114 (HTTP/3), RFC 9204 (QPACK), RFC 9000 (QUIC Transport).
-   - **WebSocket**: RFC 6455 (WebSocket Protocol), RFC 7692 (Per-Message Compression), RFC 6454 (Origin), RFC 9110 (Upgrade/Handshake).
-2. **Parallel Spec Scan**: Retrieve and scan the raw RFC text (ABNF grammar definitions, `MUST`, `MUST NOT`, `SHOULD` normative clauses) directly alongside the code implementation.
+1. **Dynamic RFC Discovery Engine**: Autonomously identify and resolve the complete set of governing IETF RFCs, updates, obsoletions, and extensions directly from the codebase context (wire protocols, framing bytes, handshake tokens, header definitions, docstrings, and protocol state machines). Do not rely on static lists—dynamically determine every primary and referenced RFC.
+2. **Parallel Spec Scan**: Retrieve and scan the raw normative spec text (ABNF grammar definitions, `MUST`, `MUST NOT`, `SHOULD`, `SHOULD NOT` clauses, status/close code registries) directly alongside the code implementation.
 3. **Cross-Check Invariants**:
    - Verify parser tokens against raw ABNF grammar (whitespace `OWS`/`BWS`, delimiters, CRLF `\r\n`).
    - Verify field ordering and forbidden frame/header rules directly from the spec text.
@@ -248,11 +244,11 @@ Whenever auditing, reviewing, or writing networking, parser, framing, or protoco
 
 ## 8. RFC Compliance & Protocol Edge Case Scan Methodology
 
-Use this systematic audit process to uncover missing edge cases across any protocol parser or spec implementation (HTTP, H2, H3, WebSocket, TLS, DNS, AMQP):
+Use this systematic audit process to uncover missing edge cases across any protocol parser or spec implementation:
 
-### Step 0: Dependency & Protocol Auto-Discovery
-* **Action**: Scan all imports, framing types, codecs, and handshakes to resolve all underlying and referenced RFCs.
-* **Scan Target**: Ensure no ancillary RFC (e.g., extensions, compression, close status codes, header semantics) is omitted during auditing.
+### Step 0: Autonomous Protocol & RFC Resolution
+* **Action**: Dynamically discover all governing RFCs, standard updates, errata, and extension specs by analyzing the target subsystem's wire format, framing constants, handshake negotation, and protocol state transitions.
+* **Scan Target**: Resolve the complete dependency graph of all applicable RFCs without hardcoded assumptions.
 
 ### Step 1: Normative Clause Extraction & Diff Matrix
 * **Action**: Extract every `MUST`, `MUST NOT`, `REQUIRED`, `SHALL`, `SHALL NOT`, `SHOULD NOT` clause from the relevant RFC sections.

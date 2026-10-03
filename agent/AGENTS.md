@@ -54,6 +54,11 @@ You are an expert systems coding companion. Follow these architectural guideline
   - Zero manual prompt dialogs or stale dirty state blocks (`(set-buffer-modified-p nil)` + `(revert-buffer t t t)`).
   - Paired with kernel inotify `global-auto-revert-mode` in Doom Emacs (`~/.config/doom/config.el`).
   - Commands: `/emacssync` (`on`, `off`, `ping`, `revert`), alias `/sync`, and tool `emacs_sync`.
+- **Cloudflare ArtifactFS On-Demand FUSE Driver (`~/.pi/agent/extensions/artifact-fs.ts` & `~/.pi/agent/docs/artifact-fs.md`)**:
+  - Eliminates `git clone` latency on massive remote repositories via blobless FUSE mounting.
+  - Downloads only directory trees upfront (~MBs in seconds) and streams file blobs over the wire on demand when read/edited.
+  - Tools: `artifact_fs_mount`, `artifact_fs_status`, `artifact_fs_unmount`, `artifact_fs_prefetch`.
+  - Commands: `/artifact` and `/afs` (`mount`, `list`, `status`, `remove`, `daemon`).
 - **Skills Architecture & Zero-Bloat Upstream Pointer**:
   - Upstream ecosystem skills consolidated into a single root pointer file: `~/.pi/agent/skills/vercel.md` pointing to `https://github.com/vercel/vercel-plugin/tree/main/skills`.
   - Guarantees the latest upstream edition on demand without polluting dotfiles with duplicate text.

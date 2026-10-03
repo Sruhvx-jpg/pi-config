@@ -45,5 +45,7 @@ crashes.json
 agent/crashes.json
 step-intent.json
 agent/step-intent.json
+agent/pi-subagents/
+pi-subagents/
 *-followups.md
 *.followup.md

@@ -112,9 +112,17 @@ Use this guide whenever reviewing, writing, refactoring, or auditing systems cod
 ## 3. Protocol & Networking Audits (Dynamic Parallel RFC Discovery & Audit)
 
 Whenever auditing, reviewing, or writing networking, parser, framing, or protocol code:
-1. **Dynamic RFC Discovery Engine**: Autonomously identify and resolve the complete set of governing IETF RFCs, updates, obsoletions, and extensions directly from the codebase context (wire protocols, framing bytes, handshake tokens, header definitions, docstrings, and protocol state machines). Do not rely on static lists—dynamically determine every primary and referenced RFC.
-2. **Parallel Spec Scan**: Retrieve and scan the raw normative spec text (ABNF grammar definitions, `MUST`, `MUST NOT`, `SHOULD`, `SHOULD NOT` clauses, status/close code registries) directly alongside the code implementation.
-3. **Cross-Check Invariants**:
+1. **Dynamic RFC Discovery & Multi-Spec Cross-Referencing**:
+   - Autonomously identify and resolve the complete graph of governing IETF RFCs, updates, obsoletions, and foundational HTTP/URI specs directly from the codebase context (wire protocols, framing bytes, handshake tokens, header definitions, docstrings, and protocol state machines).
+   - **Cross-Reference in Parallel**: Never audit an isolated protocol RFC in a vacuum. Always cross-reference against companion baseline RFCs (e.g. RFC 9110 HTTP Semantics, RFC 9112 HTTP/1.1, RFC 9113 HTTP/2, RFC 6455 WebSocket, RFC 3986 URI Generic Syntax, RFC 7230/7231 historical mappings).
+2. **Direct Verbatim Quotes Only (Zero Fabrications / No Hallucinations)**:
+   - **NEVER** synthesize, summarize from memory, or paraphrase RFC clauses inside quotation marks (`""`).
+   - Fetch the exact raw ASCII/HTML text directly from authoritative sources (`rfc-editor.org` or IETF datatracker) to confirm line-by-line verbatim match.
+   - Verify the exact section number, section heading, and clause before attributing any quote.
+3. **Normative Requirements vs Non-Normative Examples**:
+   - Strictly separate normative requirements (`MUST`, `MUST NOT`, `SHOULD`, `SHOULD NOT`, `REQUIRED`) from non-normative guidance, illustrative diagrams, and non-exhaustive recommendations (`such as ...`, `for example`).
+   - Never treat an informal example in a tutorial/overview section as an exclusive normative mandate over the formal protocol specification steps.
+4. **Cross-Check Parser Invariants**:
    - Verify parser tokens against raw ABNF grammar (whitespace `OWS`/`BWS`, delimiters, CRLF `\r\n`).
    - Verify field ordering and forbidden frame/header rules directly from the spec text.
    - Verify state machine transitions and error triggers against normative clauses before asserting compliance.
@@ -240,6 +248,13 @@ Whenever auditing, reviewing, or writing networking, parser, framing, or protoco
 * **The Rule**:
   - Hoist shared dependencies to root `Cargo.toml` under `[workspace.dependencies]` and reference them in subcrates via `<crate>.workspace = true`.
 
+### Rule 7.3: Leaked Internal Visibility & Unnecessary Public Constants (`pub const` Pollution)
+* **The Pitfall**: Exposing internal protocol framing lengths, intermediate buffer scratchpad sizes, or parser bitmasks as `pub const` (e.g. `pub const WS_ACCEPT_LEN: usize = 28;`) instead of private `const` or `pub(crate) const`.
+* **Why it breaks**: Unnecessary `pub` items permanently expand the crate's external Semver API surface. Downstream consumers can bind to internal implementation details, preventing future internal refactors, optimizations, or algorithmic changes without breaking public semver contracts.
+* **The Rule**:
+  - Keep internal implementation constants, scratchpad capacities, and protocol bitmasks strictly private (`const FOO: usize = ...;`) or module/crate-scoped (`pub(crate) const`).
+  - Only mark constants as `pub` if external callers explicitly require them in public function signatures, trait configurations, or public protocol negotiation types.
+
 ---
 
 ## 8. Dynamic Multi-Dimensional Systems Audit Methodology
@@ -286,5 +301,6 @@ The scan suite directs the agent to perform an autonomous, multi-dimensional aud
 - [ ] **State Machine Soundness**: Are duplicate close calls, out-of-sequence events, and re-entry guarded?
 - [ ] **Error Mapping Fidelity**: Are error variants preserved with exact semantic meaning and spec status codes?
 - [ ] **Unbounded Buffering**: Is stream collection bounded (`chunks`/`ready_chunks`) instead of `.collect::<Vec<_>>()`?
+- [ ] **API Visibility Hygiene**: Are internal constants, masks, and scratchpad lengths private (`const` / `pub(crate)`) rather than leaked as `pub`?
 - [ ] **Resource Limits (DoS)**: Are max frame sizes, payload allocations, and timeouts strictly enforced before processing?
 - [ ] **Infallible Drop**: Are all `Drop` implementations panic-free with non-blocking logging?

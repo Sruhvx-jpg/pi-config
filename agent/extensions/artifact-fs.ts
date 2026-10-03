@@ -30,7 +30,7 @@ import * as path from "node:path";
 // ============================================================================
 const HOME = process.env.HOME || os.homedir();
 const ARTIFACT_FS_ROOT =
-  process.env.ARTIFACT_FS_ROOT || path.join(HOME, ".local/share/artifact-fs");
+  process.env.ARTIFACT_FS_ROOT || "/tmp/artifact-fs";
 const MOUNT_ROOT = path.join(ARTIFACT_FS_ROOT, "mnt");
 const DAEMON_LOG = path.join(ARTIFACT_FS_ROOT, "daemon.log");
 const BIN_PATH = path.join(HOME, ".local/bin/artifact-fs");

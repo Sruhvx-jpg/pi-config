@@ -95,6 +95,6 @@ The Pi extension wraps the ArtifactFS CLI and daemon, exposing native agent tool
 
 | Path | Purpose |
 | :--- | :--- |
-| `~/.local/share/artifact-fs` | Root state directory (`ARTIFACT_FS_ROOT`). Stores SQLite snapshots & overlay DBs. |
-| `~/.local/share/artifact-fs/mnt` | Default FUSE mount root directory where repos are exposed. |
-| `~/.local/share/artifact-fs/daemon.log` | Background daemon log. |
+| `/tmp/artifact-fs` | Default root state directory (`ARTIFACT_FS_ROOT`). Stores SQLite snapshots & overlay DBs. |
+| `/tmp/artifact-fs/mnt` | Default FUSE mount root directory where repos are exposed. |
+| `/tmp/artifact-fs/daemon.log` | Background daemon log. |

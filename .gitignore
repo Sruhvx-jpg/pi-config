@@ -7,6 +7,9 @@ agent/sessions/
 auth.json
 agent/auth.json
 **/auth.json
+mcp-auth.json
+agent/mcp-auth.json
+**/mcp-auth.json
 *.env
 *.env.*
 *.ovpn

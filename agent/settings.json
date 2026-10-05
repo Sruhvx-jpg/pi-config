@@ -3,7 +3,7 @@
     "npm:pi-antigravity",
     "npm:pi-subagents"
   ],
-  "lastChangelogVersion": "1.0.0",
+  "lastChangelogVersion": "1.0.2",
   "theme": "nvim-dark",
   "defaultProvider": "antigravity",
   "defaultModel": "gemini-3.7-flash",

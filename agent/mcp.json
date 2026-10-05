@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "catalyst": {
+      "url": "https://catalyst.zohomcp.in/mcp/message"
+    },
+    "excel": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@negokaz/excel-mcp-server"
+      ],
+      "description": "Excel spreadsheet inspection and manipulation MCP server"
+    }
+  }
+}

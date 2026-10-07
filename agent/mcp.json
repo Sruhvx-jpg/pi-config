@@ -1,5 +1,9 @@
 {
   "mcpServers": {
+    "canva": {
+      "url": "https://mcp.canva.com/mcp",
+      "description": "Official Canva Remote MCP server for presentations, designs, templates, and asset generation"
+    },
     "catalyst": {
       "url": "https://catalyst.zohomcp.in/mcp/message"
     },
@@ -10,6 +14,14 @@
         "@negokaz/excel-mcp-server"
       ],
       "description": "Excel spreadsheet inspection and manipulation MCP server"
+    },
+    "ms365": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@softeria/ms-365-mcp-server"
+      ],
+      "description": "Microsoft 365 and Excel Online MCP server"
     }
   }
 }

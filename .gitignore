@@ -50,5 +50,9 @@ step-intent.json
 agent/step-intent.json
 agent/pi-subagents/
 pi-subagents/
+agent/missions/
+missions/
+agent/run-history.jsonl
+run-history.jsonl
 *-followups.md
 *.followup.md

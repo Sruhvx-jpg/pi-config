@@ -199,10 +199,9 @@ export default function (pi: ExtensionAPI) {
   });
 
   // 3. Slash Command: /embed
-  pi.registerCommand({
-    name: "embed",
+  pi.registerCommand("embed", {
     description: "Generate embeddings or compare semantic similarity via local EmbeddingGemma",
-    async execute(args, ctx) {
+    handler: async (args, ctx) => {
       const raw = (args || "").trim();
 
       if (!raw || raw === "status") {

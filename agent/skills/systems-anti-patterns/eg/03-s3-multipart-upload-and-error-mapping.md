@@ -82,3 +82,40 @@ if let Some(upload) = self.upload.take() {
     });
 }
 ```
+
+---
+
+## 5. False-Positive Substring Leak in Error Assertions
+
+### The Pitfall
+Matching a generic substring (e.g. `err_str.contains("kms")`) when asserting that a cloud emulator (like MinIO) rejected an unconfigured feature.
+```rust
+// BAD: "kms" appears inside the test URL path ("s3://bucket/test_sse_kms_default")
+fn assert_minio_kms_rejection(err: &iceberg::Error) {
+    let err_str = err.to_string();
+    assert!(
+        err_str.contains("501")
+            || err_str.contains("NotImplemented")
+            || err_str.contains("kms") // ❌ BUG: Matches the request URL in iceberg::Error!
+    );
+}
+```
+* **Why it breaks**: When `iceberg::Error` displays the failed request URL, the test filename/key (e.g., `test_file_io_s3_sse_kms_default`) embeds `"kms"`. Any failure—connection refused, 403 Forbidden, 404 NoSuchBucket—stringifies with `"kms"` and passes green without the client ever sending the encryption header.
+
+### The Correct Pattern
+Match **only** deterministic server status codes or unambiguous error payloads, never generic tokens that can appear in request URIs:
+```rust
+// GOOD: Match only explicit KES-less server rejection signals
+fn assert_minio_kms_rejection(err: &iceberg::Error) {
+    let err_str = err.to_string();
+    assert!(
+        err_str.contains("501")
+            || err_str.contains("NotImplemented")
+            || err_str.contains("KMS is not configured")
+            || err_str.contains("ServerNotInitialized")
+            || err_str.contains("A header you provided implies functionality that is not implemented"),
+        "Expected KMS rejection from KES-less MinIO confirming SSE header was sent, got: {err_str}"
+    );
+}
+```
+

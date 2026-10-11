@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PALANTIR // WORKHOUSE OS</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <header>
+    <div class="brand">
+      <div class="brand-logo">
+        <div class="pulse-dot"></div>
+        PALANTIR // WORKHOUSE
+      </div>
+      <span class="tag tag-white" id="hub-badge">HUB ACTIVE</span>
+      <span class="tag">PORT 3000</span>
+      <span class="tag">LOCAL IPC MESH</span>
+    </div>
+    <div class="header-metrics">
+      <div>CLUSTER NODES: <strong id="node-count" style="color:#fff">0</strong></div>
+      <div>ARTIFACTS: <strong id="artifact-count" style="color:#fff">0</strong></div>
+      <div>SYSTEM TIME: <span id="clock" style="color:#fff">--:--:--</span></div>
+    </div>
+  </header>
+
+  <div class="cockpit">
+    <!-- LEFT PANEL: TOPOLOGY & TASKS -->
+    <div class="panel-left">
+      <div class="section-header">
+        <span>// CLUSTER TOPOLOGY</span>
+        <span class="tag" id="topo-tag">0 ACTIVE</span>
+      </div>
+      <div id="nodes-list"></div>
+
+      <div class="section-header">
+        <span>// DIRECTED TASKS MATRIX</span>
+        <span class="tag" id="task-tag">0 TASKS</span>
+      </div>
+      <div id="tasks-list"></div>
+
+      <div class="section-header">
+        <span>// COORDINATION LOCKS</span>
+        <span class="tag" id="lock-tag">0 LOCKS</span>
+      </div>
+      <div id="locks-list"></div>
+    </div>
+
+    <!-- RIGHT PANEL: ARTIFACTS & COMMS -->
+    <div class="panel-right">
+      <div class="section-header">
+        <span>// SHARED ARTIFACTS DEPOT</span>
+        <span class="tag" id="art-tag">0 ASSETS</span>
+      </div>
+      <div class="artifacts-section">
+        <table class="artifacts-table">
+          <thead>
+            <tr>
+              <th>ARTIFACT NAME</th>
+              <th>SIZE</th>
+              <th>SHA256 (PREFIX)</th>
+              <th>OWNER AGENT</th>
+              <th>DESCRIPTION</th>
+              <th>ACTION</th>
+            </tr>
+          </thead>
+          <tbody id="artifacts-body">
+            <tr><td colspan="6" style="color:var(--text-muted);text-align:center;padding:20px;">No artifacts currently shared.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="comms-container">
+        <div class="comms-tabs">
+          <div class="comms-tab active" data-chan="ALL" onclick="setChannel('ALL')">ALL EVENTS</div>
+          <div class="comms-tab" data-chan="#general" onclick="setChannel('#general')">#GENERAL</div>
+          <div class="comms-tab" data-chan="#tasks" onclick="setChannel('#tasks')">#TASKS</div>
+          <div class="comms-tab" data-chan="#help" onclick="setChannel('#help')">#HELP</div>
+        </div>
+
+        <div class="comms-feed" id="comms-feed"></div>
+
+        <div class="dispatch-bar">
+          <span style="font-size:11px;color:var(--text-muted);">DISPATCH &gt;</span>
+          <input type="text" id="dispatch-input" class="dispatch-input" placeholder="Broadcast message across Pi session agents... (press Enter)" onkeydown="if(event.key==='Enter')sendMessage()">
+          <button class="dispatch-btn" onclick="sendMessage()">TRANSMIT</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="/app.js"></script>
+</body>
+</html>

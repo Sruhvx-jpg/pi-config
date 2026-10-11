@@ -56,3 +56,7 @@ agent/run-history.jsonl
 run-history.jsonl
 *-followups.md
 *.followup.md
+
+# Workhouse runtime data
+agent/workhouse/data/
+workhouse/data/

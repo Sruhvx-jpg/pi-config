@@ -21,6 +21,7 @@ export const WORKHOUSE_DB_PATH = path.join(WORKHOUSE_DATA_DIR, "workhouse.db");
 export const WORKHOUSE_HUB_SOCK = path.join(WORKHOUSE_DATA_DIR, "workhouse.sock");
 export const WORKHOUSE_SOCKETS_DIR = path.join(WORKHOUSE_DATA_DIR, "sockets");
 export const WORKHOUSE_ARTIFACTS_DIR = path.join(WORKHOUSE_DATA_DIR, "artifacts");
+export const WORKHOUSE_UI_PID_PATH = path.join(WORKHOUSE_DATA_DIR, "ui.pid");
 
 export function ensureDirectories(): void {
   fs.mkdirSync(WORKHOUSE_DIR, { recursive: true });

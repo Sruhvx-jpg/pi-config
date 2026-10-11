@@ -198,5 +198,22 @@ async function sendMessage() {
   }
 }
 
+async function closeWorkhouse() {
+  if (!confirm("Are you sure you want to shut down and close the Workhouse server?")) return;
+  try {
+    const res = await fetch('/api/shutdown', { method: 'POST' });
+    const data = await res.json();
+    document.body.innerHTML = `
+      <div style="height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:var(--font-mono);background:#050505;color:#f4f4f5;text-align:center;gap:14px;padding:20px;">
+        <div style="font-size:20px;font-weight:900;letter-spacing:0.15em;color:#ef4444;">🏛️ PI WORKHOUSE // OFFLINE</div>
+        <div style="font-size:12px;color:#a1a1aa;">The Workhouse server process has been cleanly terminated.</div>
+        <div style="font-size:11px;color:#52525b;border:1px solid #27272a;padding:6px 12px;border-radius:4px;">You can now close this tab or restart with /wh ui.</div>
+      </div>
+    `;
+  } catch (err) {
+    alert("Shutdown request failed: " + err.message);
+  }
+}
+
 setInterval(fetchState, 1500);
 fetchState();

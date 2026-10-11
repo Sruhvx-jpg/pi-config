@@ -9,6 +9,7 @@ import { DatabaseSync } from "node:sqlite";
 import {
   WORKHOUSE_DB_PATH,
   WORKHOUSE_HUB_SOCK,
+  WORKHOUSE_UI_PID_PATH,
   getWorkhouseDb,
 } from "../db.ts";
 import { sendFrameToSocket } from "../ipc.ts";
@@ -135,6 +136,23 @@ export function createWebServer(port = DEFAULT_PORT) {
       return;
     }
 
+    if ((url.pathname === "/api/shutdown" || url.pathname === "/api/close") && req.method === "POST") {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ ok: true, message: "Workhouse cockpit shutting down" }));
+      setTimeout(() => {
+        try {
+          if (fs.existsSync(WORKHOUSE_UI_PID_PATH)) {
+            fs.unlinkSync(WORKHOUSE_UI_PID_PATH);
+          }
+        } catch {}
+        server.close();
+        if (process.argv[1]?.includes("workhouse") || process.argv[1]?.includes("cli.ts") || process.argv[1]?.includes("server.ts")) {
+          process.exit(0);
+        }
+      }, 100);
+      return;
+    }
+
     res.writeHead(404, { "Content-Type": "text/plain" });
     res.end("Not Found");
   });
@@ -144,16 +162,65 @@ export function createWebServer(port = DEFAULT_PORT) {
     listen: () =>
       new Promise<void>((resolve, reject) => {
         server.listen(port, "0.0.0.0", () => {
-          console.log(`◈ PALANTIR WORKHOUSE COCKPIT ACTIVE ON PORT ${port}`);
+          try {
+            fs.writeFileSync(WORKHOUSE_UI_PID_PATH, String(process.pid), "utf-8");
+          } catch {}
+          console.log(`◈ PI WORKHOUSE COCKPIT ACTIVE ON PORT ${port}`);
           console.log(`  http://localhost:${port}`);
           resolve();
         });
         server.on("error", reject);
       }),
+    close: () =>
+      new Promise<void>((resolve, reject) => {
+        try {
+          if (fs.existsSync(WORKHOUSE_UI_PID_PATH)) {
+            fs.unlinkSync(WORKHOUSE_UI_PID_PATH);
+          }
+        } catch {}
+        server.close((err) => {
+          if (err) reject(err);
+          else resolve();
+        });
+      }),
   };
 }
 
+export async function stopWorkhouseUi(port = DEFAULT_PORT): Promise<{ ok: boolean; pid?: number; message: string }> {
+  let pid: number | null = null;
+  if (fs.existsSync(WORKHOUSE_UI_PID_PATH)) {
+    try {
+      const content = fs.readFileSync(WORKHOUSE_UI_PID_PATH, "utf-8").trim();
+      pid = parseInt(content, 10);
+    } catch {}
+  }
+
+  if (pid && !isNaN(pid)) {
+    try {
+      process.kill(pid, 0);
+      process.kill(pid, "SIGTERM");
+      try {
+        if (fs.existsSync(WORKHOUSE_UI_PID_PATH)) fs.unlinkSync(WORKHOUSE_UI_PID_PATH);
+      } catch {}
+      return { ok: true, pid, message: `Stopped Workhouse Web UI (PID ${pid})` };
+    } catch {}
+  }
+
+  try {
+    const res = await fetch(`http://localhost:${port}/api/shutdown`, { method: "POST" });
+    if (res.ok) {
+      return { ok: true, message: `Workhouse Web UI on port ${port} shut down successfully` };
+    }
+  } catch {}
+
+  try {
+    if (fs.existsSync(WORKHOUSE_UI_PID_PATH)) fs.unlinkSync(WORKHOUSE_UI_PID_PATH);
+  } catch {}
+
+  return { ok: false, message: `No active Workhouse UI server found running on port ${port}` };
+}
+
 if (process.argv[1] && process.argv[1].endsWith("server.ts")) {
-  const instance = createWebServer(PORT);
+  const instance = createWebServer(DEFAULT_PORT);
   instance.listen().catch(console.error);
 }

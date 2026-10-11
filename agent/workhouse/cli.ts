@@ -6,7 +6,7 @@ import { getWorkhouseDb, WORKHOUSE_HUB_SOCK } from "./db.ts";
 import { sendFrameToSocket } from "./ipc.ts";
 import { ArtifactDepot } from "./artifacts.ts";
 import { C, formatBytes, formatLatency } from "./types.ts";
-import { createWebServer, DEFAULT_PORT } from "./web/server.ts";
+import { createWebServer, stopWorkhouseUi, DEFAULT_PORT } from "./web/server.ts";
 
 const args = process.argv.slice(2);
 const cmd = args[0]?.toLowerCase() || "status";
@@ -137,14 +137,28 @@ async function main() {
     }
 
     case "ui": {
+      if (args[1] === "stop" || args[1] === "close") {
+        const port = args[2] ? parseInt(args[2], 10) : DEFAULT_PORT;
+        const res = await stopWorkhouseUi(port);
+        console.log(res.ok ? `🏛️ ${res.message}` : `⚠️ ${res.message}`);
+        break;
+      }
       const port = args[1] ? parseInt(args[1], 10) : DEFAULT_PORT;
       const web = createWebServer(port);
       await web.listen();
       break;
     }
 
+    case "stop":
+    case "close": {
+      const port = args[1] ? parseInt(args[1], 10) : DEFAULT_PORT;
+      const res = await stopWorkhouseUi(port);
+      console.log(res.ok ? `🏛️ ${res.message}` : `⚠️ ${res.message}`);
+      break;
+    }
+
     default: {
-      console.log("Usage: pi-workhouse [status|peers|ping|chat|artifacts|share|fetch|tasks|ui]");
+      console.log("Usage: pi-workhouse [status|peers|ping|chat|artifacts|share|fetch|tasks|ui|stop|close]");
       break;
     }
   }

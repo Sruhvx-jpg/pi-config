@@ -26,8 +26,11 @@ import {
 } from "../workhouse/types.ts";
 import {
   createWebServer,
+  stopWorkhouseUi,
   DEFAULT_PORT,
 } from "../workhouse/web/server.ts";
+
+let activeWebServer: ReturnType<typeof createWebServer> | null = null;
 
 async function renderWorkhouseDashboard(
   engine: WorkhouseEngine,
@@ -228,6 +231,12 @@ export default function (pi: ExtensionAPI) {
   });
 
   pi.on("session_shutdown", async () => {
+    if (activeWebServer) {
+      try {
+        await activeWebServer.close();
+      } catch {}
+      activeWebServer = null;
+    }
     engine.stop();
   });
 
@@ -821,14 +830,50 @@ export default function (pi: ExtensionAPI) {
 
     switch (sub) {
       case "ui": {
-        const port = parts[1] ? parseInt(parts[1], 10) : DEFAULT_PORT;
-        try {
-          const web = createWebServer(port);
-          web.listen().catch(() => {});
-          ctx.ui.notify(`🏛️ Workhouse Web UI active at http://localhost:${port}`, "info");
-        } catch {
-          ctx.ui.notify(`🏛️ Workhouse Web UI active at http://localhost:${port}`, "info");
+        if (parts[1] === "stop" || parts[1] === "close") {
+          if (activeWebServer) {
+            try {
+              await activeWebServer.close();
+            } catch {}
+            activeWebServer = null;
+            ctx.ui.notify("🏛️ Workhouse Web UI stopped.", "info");
+            return;
+          }
+          const port = parts[2] ? parseInt(parts[2], 10) : DEFAULT_PORT;
+          const res = await stopWorkhouseUi(port);
+          ctx.ui.notify(res.ok ? `🏛️ ${res.message}` : `⚠️ ${res.message}`, res.ok ? "info" : "warning");
+          return;
         }
+
+        const port = parts[1] ? parseInt(parts[1], 10) : DEFAULT_PORT;
+        if (activeWebServer) {
+          ctx.ui.notify(`🏛️ Workhouse Web UI is already running at http://localhost:${port}. Use /wh ui stop to close it.`, "warning");
+          return;
+        }
+        try {
+          activeWebServer = createWebServer(port);
+          await activeWebServer.listen();
+          ctx.ui.notify(`🏛️ Workhouse Web UI active at http://localhost:${port}`, "info");
+        } catch (err: any) {
+          activeWebServer = null;
+          ctx.ui.notify(`⚠️ Failed to start Workhouse Web UI: ${err.message}`, "error");
+        }
+        return;
+      }
+
+      case "stop":
+      case "close": {
+        if (activeWebServer) {
+          try {
+            await activeWebServer.close();
+          } catch {}
+          activeWebServer = null;
+          ctx.ui.notify("🏛️ Workhouse Web UI stopped.", "info");
+          return;
+        }
+        const port = parts[1] ? parseInt(parts[1], 10) : DEFAULT_PORT;
+        const res = await stopWorkhouseUi(port);
+        ctx.ui.notify(res.ok ? `🏛️ ${res.message}` : `⚠️ ${res.message}`, res.ok ? "info" : "warning");
         return;
       }
 
@@ -1120,7 +1165,7 @@ export default function (pi: ExtensionAPI) {
       }
 
       default: {
-        ctx.ui.notify(`Unknown subcommand: "${sub}". Try /wh, /wh feed, /wh artifacts, /wh direct, /wh help, /wh ui`, "warning");
+        ctx.ui.notify(`Unknown subcommand: "${sub}". Try /wh, /wh feed, /wh artifacts, /wh direct, /wh help, /wh ui, /wh stop`, "warning");
       }
     }
   };

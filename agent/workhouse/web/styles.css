@@ -91,6 +91,28 @@ header {
   font-size: 11px;
 }
 
+.btn-shutdown {
+  background: transparent;
+  border: 1px solid #7f1d1d;
+  color: #f87171;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  padding: 3px 9px;
+  cursor: pointer;
+  text-transform: uppercase;
+  transition: all 0.15s ease;
+  border-radius: 2px;
+}
+
+.btn-shutdown:hover {
+  background: #dc2626;
+  color: #ffffff;
+  border-color: #dc2626;
+  box-shadow: 0 0 10px rgba(220, 38, 38, 0.4);
+}
+
 /* COCKPIT GRID */
 .cockpit {
   display: grid;

@@ -208,6 +208,25 @@ export default function (pi: ExtensionAPI) {
     await engine.start();
   });
 
+  pi.on("agent_end", async (event) => {
+    const assistantMsgs = event.messages.filter((m: any) => m.role === "assistant");
+    const lastAssistant = assistantMsgs[assistantMsgs.length - 1];
+    let replyText = "";
+    if (lastAssistant) {
+      if (typeof lastAssistant.content === "string") {
+        replyText = lastAssistant.content;
+      } else if (Array.isArray(lastAssistant.content)) {
+        replyText = lastAssistant.content
+          .filter((c: any) => c.type === "text")
+          .map((c: any) => c.text)
+          .join("\n");
+      }
+    }
+    if (replyText) {
+      engine.onAgentTurnCompleted(replyText);
+    }
+  });
+
   pi.on("session_shutdown", async () => {
     engine.stop();
   });
@@ -424,7 +443,7 @@ export default function (pi: ExtensionAPI) {
     name: "workhouse_direct",
     label: "Workhouse Direct",
     description:
-      "Direct another concurrent Pi session agent to execute a task, run tests/builds, audit code, or assist with a sub-problem.",
+      "Direct another concurrent Pi session agent to execute a task, monitor it, and receive its completed reply in return.",
     parameters: Type.Object({
       target: Type.String({ description: "Target session name or ID to direct" }),
       title: Type.String({ description: "Short descriptive title of the task" }),
@@ -434,11 +453,50 @@ export default function (pi: ExtensionAPI) {
           description: "Task priority level (default: 'normal')",
         })
       ),
+      wait_for_reply: Type.Optional(
+        Type.Boolean({
+          description: "Whether to wait and receive the agent's completed reply in return (default: true).",
+        })
+      ),
+      timeout_seconds: Type.Optional(
+        Type.Number({
+          description: "Max seconds to wait for the agent to finish and reply (default: 90).",
+        })
+      ),
     }),
     async execute(_id, params) {
       const peer = engine.findPeer(params.target);
       if (!peer) {
         throw new Error(`Target session not found: ${params.target}`);
+      }
+
+      const shouldWait = params.wait_for_reply !== false;
+
+      if (shouldWait) {
+        const timeoutMs = (params.timeout_seconds || 90) * 1000;
+        const res = await engine.askPeer(peer, params.title, params.instruction, timeoutMs);
+
+        if (res.ok) {
+          return {
+            content: [
+              {
+                type: "text",
+                text: `📩 Received reply from agent ${peer.name} (PID ${peer.pid}) [Task: "${params.title}" | Took ${(res.durationMs / 1000).toFixed(1)}s]:\n\n${res.reply}`,
+              },
+            ],
+            details: res,
+          };
+        } else {
+          return {
+            content: [
+              {
+                type: "text",
+                text: `⏳ Directed task "${params.title}" dispatched to ${peer.name}, but awaiting reply timed out (${params.timeout_seconds || 90}s). The agent may still be executing. Check status with workhouse_tasks.`,
+              },
+            ],
+            details: res,
+          };
+        }
       }
 
       const task = await engine.directTask(peer, params.title, params.instruction, params.priority || "normal");
@@ -700,6 +758,44 @@ export default function (pi: ExtensionAPI) {
           };
         }
       }
+    },
+  });
+
+  // Tool 7: workhouse_monitor
+  pi.registerTool({
+    name: "workhouse_monitor",
+    label: "Workhouse Monitor",
+    description:
+      "Monitor all connected Pi worker agents in real-time: active tasks, execution status, latencies, and latest replies.",
+    parameters: Type.Object({
+      target: Type.Optional(
+        Type.String({ description: "Specific peer to monitor (or omit for entire cluster)" })
+      ),
+    }),
+    async execute(_id, _params) {
+      const tasks = engine.listTasks();
+      const pings = await engine.pingAllSessions();
+
+      const lines = [`📊 WORKHOUSE AGENT MONITOR:`];
+      for (const p of pings) {
+        const peerTasks = tasks.filter((t) => t.to_session_id === p.peer.id || t.to_session_id === p.peer.name);
+        const inProgress = peerTasks.filter((t) => t.status === "in_progress");
+        const completed = peerTasks.filter((t) => t.status === "completed");
+        const status = p.ok ? `${p.latencyMs}ms` : "OFFLINE";
+
+        lines.push(`● ${p.peer.name} [${p.peer.role}] (PID ${p.peer.pid}) -> Latency: ${status}`);
+        lines.push(`   Active Tasks (${inProgress.length}): ${inProgress.map((t) => `"${t.title}"`).join(", ") || "Idle"}`);
+        lines.push(`   Completed Tasks (${completed.length})`);
+        if (completed.length > 0) {
+          const last = completed[0];
+          lines.push(`   Latest Reply: "${last.result ? last.result.slice(0, 120) : "done"}..."`);
+        }
+      }
+
+      return {
+        content: [{ type: "text", text: lines.join("\n") }],
+        details: { pings, tasks },
+      };
     },
   });
 

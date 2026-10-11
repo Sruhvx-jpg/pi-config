@@ -58,6 +58,11 @@ export class WorkhouseEngine {
   private piApi: any = null;
   private unreadCount = 0;
   private isShuttingDown = false;
+  private activeTasksToReply: Map<string, { fromSessionId: string; fromSessionName: string }> = new Map();
+  private pendingReplyResolvers: Map<
+    string,
+    { resolve: (res: any) => void; timer: NodeJS.Timeout; startedAt: number }
+  > = new Map();
 
   constructor() {
     this.pid = process.pid;
@@ -460,12 +465,18 @@ Please execute this task now and report your findings to the Workhouse via workh
             .prepare("UPDATE tasks SET status = 'in_progress', updated_at = ? WHERE id = ?")
             .run(Date.now(), frame.taskId);
 
+          // Track this task to automatically reply when agent turn completes
+          this.activeTasksToReply.set(frame.taskId, {
+            fromSessionId: frame.from_session_id,
+            fromSessionName: frame.from_session_name,
+          });
+
           const promptText = `[WORKHOUSE TASK DIRECTED BY ${frame.from_session_name.toUpperCase()}]:
 Title: ${frame.title}
 Instruction: ${frame.instruction}
 Task ID: ${frame.taskId}
 
-Execute this task and report back using workhouse_tasks(action: 'update', taskId: '${frame.taskId}', status: 'completed', result: '...') or /wh chat.`;
+Please execute this task thoroughly. When finished, your response will be automatically transmitted back as the official reply to ${frame.from_session_name}.`;
 
           if (this.piApi) {
             try {
@@ -486,6 +497,30 @@ Execute this task and report back using workhouse_tasks(action: 'update', taskId
                 "\n"
             );
           } catch {}
+        }
+        break;
+      }
+
+      case "TASK_REPLY": {
+        if (this.extContext?.hasUI) {
+          this.extContext.ui.notify(
+            `📩 [Workhouse Reply from ${frame.from_session_name}]: "${frame.reply.slice(0, 80)}..."`,
+            "info"
+          );
+        }
+
+        // Resolve any awaiting caller
+        const pending = this.pendingReplyResolvers.get(frame.taskId);
+        if (pending) {
+          clearTimeout(pending.timer);
+          this.pendingReplyResolvers.delete(frame.taskId);
+          pending.resolve({
+            ok: frame.status === "completed",
+            taskId: frame.taskId,
+            reply: frame.reply,
+            from_session_name: frame.from_session_name,
+            durationMs: Date.now() - pending.startedAt,
+          });
         }
         break;
       }
@@ -811,6 +846,70 @@ Execute this task and report back using workhouse_tasks(action: 'update', taskId
     return this.db
       .prepare("SELECT * FROM messages ORDER BY created_at DESC LIMIT ?")
       .all(limit) as unknown as MessageRecord[];
+  }
+
+  public onAgentTurnCompleted(replyText: string): void {
+    if (this.activeTasksToReply.size === 0) return;
+
+    for (const [taskId, requester] of this.activeTasksToReply.entries()) {
+      this.updateTaskStatus(taskId, "completed", replyText);
+
+      const frame: WorkhouseFrame = {
+        type: "TASK_REPLY",
+        taskId,
+        from_session_id: this.sessionId,
+        from_session_name: this.sessionName,
+        to_session_id: requester.fromSessionId,
+        status: "completed",
+        reply: replyText,
+      };
+
+      const targetPeer = this.findPeer(requester.fromSessionId);
+      if (targetPeer) {
+        this.sendFrameToPeer(targetPeer, frame).catch(() => {});
+      }
+
+      this.postMessage(
+        "#tasks",
+        `✅ [Completed ${taskId} by ${this.sessionName}]:\n${replyText.slice(0, 200)}...`
+      ).catch(() => {});
+    }
+
+    this.activeTasksToReply.clear();
+  }
+
+  public askPeer(
+    targetPeer: SessionRecord,
+    title: string,
+    instruction: string,
+    timeoutMs = 90000
+  ): Promise<{ ok: boolean; taskId: string; reply: string; durationMs: number; error?: string }> {
+    return new Promise(async (resolve) => {
+      const task = await this.directTask(targetPeer, title, instruction);
+      const startedAt = Date.now();
+
+      const timer = setTimeout(() => {
+        this.pendingReplyResolvers.delete(task.id);
+        const inDb = this.db.prepare("SELECT * FROM tasks WHERE id = ?").get(task.id) as any;
+        if (inDb && inDb.status === "completed" && inDb.result) {
+          return resolve({
+            ok: true,
+            taskId: task.id,
+            reply: inDb.result,
+            durationMs: Date.now() - startedAt,
+          });
+        }
+        resolve({
+          ok: false,
+          taskId: task.id,
+          reply: "",
+          durationMs: Date.now() - startedAt,
+          error: `Timed out after ${Math.round(timeoutMs / 1000)}s waiting for reply from ${targetPeer.name}`,
+        });
+      }, timeoutMs);
+
+      this.pendingReplyResolvers.set(task.id, { resolve, timer, startedAt });
+    });
   }
 
   // --------------------------------------------------------------------------

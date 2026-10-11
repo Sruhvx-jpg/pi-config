@@ -109,6 +109,15 @@ export type WorkhouseFrame =
       from_session_name: string;
     }
   | {
+      type: "TASK_REPLY";
+      taskId: string;
+      from_session_id: string;
+      from_session_name: string;
+      to_session_id: string;
+      status: "completed" | "failed";
+      reply: string;
+    }
+  | {
       type: "ARTIFACT_SHARED";
       artifact: ArtifactRecord;
     }

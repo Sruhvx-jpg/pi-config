@@ -1,5 +1,5 @@
 /**
- * pi-workhouse: Modular Palantir HTTP Cockpit Server
+ * pi-workhouse: Modular HTTP Cockpit Server
  */
 
 import * as http from "node:http";
@@ -86,7 +86,7 @@ export function createWebServer(port = DEFAULT_PORT) {
           const now = Date.now();
 
           db.prepare(
-            "INSERT INTO messages (id, channel, sender_id, sender_name, content, type, created_at) VALUES (?, ?, 'palantir-ui', 'operator', ?, 'text', ?)"
+            "INSERT INTO messages (id, channel, sender_id, sender_name, content, type, created_at) VALUES (?, ?, 'workhouse-ui', 'operator', ?, 'text', ?)"
           ).run(id, channel, content, now);
 
           // Dispatch frame to central Workhouse socket
@@ -95,7 +95,7 @@ export function createWebServer(port = DEFAULT_PORT) {
             message: {
               id,
               channel,
-              sender_id: "palantir-ui",
+              sender_id: "workhouse-ui",
               sender_name: "operator",
               target_id: null,
               content,

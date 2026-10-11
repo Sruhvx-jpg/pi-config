@@ -1,5 +1,5 @@
 /**
- * pi-workhouse: Palantir Cockpit Client Script
+ * pi-workhouse: Web Cockpit Client Script
  */
 
 let activeChannel = 'ALL';

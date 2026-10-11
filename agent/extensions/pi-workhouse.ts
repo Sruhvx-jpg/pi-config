@@ -722,9 +722,9 @@ export default function (pi: ExtensionAPI) {
         try {
           const web = createWebServer(port);
           web.listen().catch(() => {});
-          ctx.ui.notify(`◈ Palantir Web UI active at http://localhost:${port}`, "info");
+          ctx.ui.notify(`🏛️ Workhouse Web UI active at http://localhost:${port}`, "info");
         } catch {
-          ctx.ui.notify(`◈ Palantir Web UI active at http://localhost:${port}`, "info");
+          ctx.ui.notify(`🏛️ Workhouse Web UI active at http://localhost:${port}`, "info");
         }
         return;
       }

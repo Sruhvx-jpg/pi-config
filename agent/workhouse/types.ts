@@ -123,7 +123,7 @@ export type WorkhouseFrame =
       new_workhouse: SessionRecord;
     };
 
-// High-Contrast Cyberpunk / Palantir Terminal Palette
+// High-Contrast Monochromatic Terminal Palette
 export const C = {
   reset: "\x1b[0m",
   bold: "\x1b[1m",

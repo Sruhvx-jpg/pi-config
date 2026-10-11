@@ -55,6 +55,7 @@ export class WorkhouseEngine {
   private db: DatabaseSync;
   private artifacts: ArtifactDepot;
   private extContext: ExtensionContextAdapter | null = null;
+  private piApi: any = null;
   private unreadCount = 0;
   private isShuttingDown = false;
 
@@ -72,6 +73,10 @@ export class WorkhouseEngine {
     this.socketPath = path.join(WORKHOUSE_SOCKETS_DIR, `${this.sessionId}.sock`);
     this.db = getWorkhouseDb();
     this.artifacts = new ArtifactDepot(this.db);
+  }
+
+  public setPi(pi: any): void {
+    this.piApi = pi;
   }
 
   public setContext(ctx: ExtensionContextAdapter): void {
@@ -322,6 +327,35 @@ export class WorkhouseEngine {
           echo_timestamp: frame.timestamp,
           responder_time: Date.now(),
         };
+
+        // If ping carries a directive, immediately wake up and prompt the agent!
+        if (frame.directive) {
+          if (this.extContext?.hasUI) {
+            this.extContext.ui.notify(
+              `⚡ [Workhouse Ping Directive from ${frame.sender_name}]: "${frame.directive.slice(0, 60)}..."`,
+              "info"
+            );
+          }
+
+          const promptText = `[WORKHOUSE PING DIRECTIVE FROM ${frame.sender_name.toUpperCase()}]:
+${frame.directive}
+
+Please execute this task now and report your findings to the Workhouse via workhouse_chat or workhouse_tasks.`;
+
+          if (this.piApi) {
+            try {
+              const isIdle = this.extContext ? this.extContext.isIdle() : true;
+              if (isIdle) {
+                this.piApi.sendUserMessage(promptText);
+              } else {
+                this.piApi.sendUserMessage(promptText, { deliverAs: "followUp" });
+              }
+            } catch (err: any) {
+              console.error("[Workhouse] Failed to trigger agent turn from ping directive:", err);
+            }
+          }
+        }
+
         try {
           socket.write(JSON.stringify(pong) + "\n");
         } catch {}
@@ -417,7 +451,7 @@ export class WorkhouseEngine {
         if (frame.to_session_id === this.sessionId) {
           if (this.extContext?.hasUI) {
             this.extContext.ui.notify(
-              `🎯 [Workhouse Directed Task from ${frame.from_session_name}]: "${frame.title}"`,
+              `🎯 [Workhouse Task from ${frame.from_session_name}]: "${frame.title}"`,
               "info"
             );
           }
@@ -426,13 +460,24 @@ export class WorkhouseEngine {
             .prepare("UPDATE tasks SET status = 'in_progress', updated_at = ? WHERE id = ?")
             .run(Date.now(), frame.taskId);
 
-          if (this.extContext) {
+          const promptText = `[WORKHOUSE TASK DIRECTED BY ${frame.from_session_name.toUpperCase()}]:
+Title: ${frame.title}
+Instruction: ${frame.instruction}
+Task ID: ${frame.taskId}
+
+Execute this task and report back using workhouse_tasks(action: 'update', taskId: '${frame.taskId}', status: 'completed', result: '...') or /wh chat.`;
+
+          if (this.piApi) {
             try {
-              this.extContext.sendUserMessage(
-                `[Workhouse task directed by ${frame.from_session_name}]:\nTitle: ${frame.title}\nInstruction: ${frame.instruction}\n(Task ID: ${frame.taskId})`,
-                { deliverAs: "followUp" }
-              );
-            } catch {}
+              const isIdle = this.extContext ? this.extContext.isIdle() : true;
+              if (isIdle) {
+                this.piApi.sendUserMessage(promptText);
+              } else {
+                this.piApi.sendUserMessage(promptText, { deliverAs: "followUp" });
+              }
+            } catch (err: any) {
+              console.error("[Workhouse] Error triggering user message:", err);
+            }
           }
 
           try {
@@ -629,21 +674,23 @@ export class WorkhouseEngine {
   // Ping
   // --------------------------------------------------------------------------
   public async pingPeer(
-    peer: SessionRecord
-  ): Promise<{ ok: boolean; latencyMs: number; error?: string }> {
+    peer: SessionRecord,
+    directive?: string
+  ): Promise<{ ok: boolean; latencyMs: number; error?: string; directed?: boolean }> {
     const t0 = performance.now();
     const pingFrame: WorkhouseFrame = {
       type: "PING",
       sender_id: this.sessionId,
       sender_name: this.sessionName,
       timestamp: Date.now(),
+      directive,
     };
 
     const res = await sendFrameToSocket(peer.socket_path, pingFrame, 1500);
     const latencyMs = Number((performance.now() - t0).toFixed(2));
 
     if (res.ok && res.response?.type === "PONG") {
-      return { ok: true, latencyMs };
+      return { ok: true, latencyMs, directed: Boolean(directive) };
     }
     return { ok: false, latencyMs, error: res.error || "No pong received" };
   }

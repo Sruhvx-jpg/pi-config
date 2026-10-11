@@ -201,6 +201,7 @@ async function renderWorkhouseDashboard(
 
 export default function (pi: ExtensionAPI) {
   const engine = getWorkhouseEngine();
+  engine.setPi(pi);
 
   pi.on("session_start", async (_event, ctx) => {
     engine.setContext(ctx);
@@ -224,12 +225,17 @@ export default function (pi: ExtensionAPI) {
     parameters: Type.Object({
       action: Type.Optional(
         Type.Union([Type.Literal("list"), Type.Literal("ping")], {
-          description: "'list' (default) to list peers, 'ping' to measure latency",
+          description: "'list' (default) to list peers, 'ping' to measure latency or direct an agent via ping",
         })
       ),
       target: Type.Optional(
         Type.String({
           description: "Specific session name or ID to ping. If omitted, pings all sessions / hub.",
+        })
+      ),
+      directive: Type.Optional(
+        Type.String({
+          description: "Optional task or instruction to dispatch to the pinged peer, waking up its agent to execute work immediately.",
         })
       ),
     }),
@@ -245,13 +251,14 @@ export default function (pi: ExtensionAPI) {
               details: { ok: false },
             };
           }
-          const res = await engine.pingPeer(peer);
+          const res = await engine.pingPeer(peer, params.directive);
+          const directedNote = params.directive ? `\n🎯 Dispatched directive: "${params.directive}"` : "";
           return {
             content: [
               {
                 type: "text",
                 text: res.ok
-                  ? `⚡ PING ${peer.name} (${peer.role}, PID ${peer.pid}): ${res.latencyMs}ms | CWD: ${peer.cwd} | Branch: ${peer.git_branch || "none"}`
+                  ? `⚡ PING ${peer.name} (${peer.role}, PID ${peer.pid}): ${res.latencyMs}ms | CWD: ${peer.cwd}${directedNote}`
                   : `✖ PING ${peer.name} failed: ${res.error}`,
               },
             ],
@@ -832,16 +839,18 @@ export default function (pi: ExtensionAPI) {
       }
 
       case "ping": {
-        const target = rest.trim();
+        const target = parts[1];
+        const directive = parts.slice(2).join(" ");
         if (target) {
           const peer = engine.findPeer(target);
           if (!peer) {
             ctx.ui.notify(`✖ Peer not found: "${target}"`, "error");
             return;
           }
-          const res = await engine.pingPeer(peer);
+          const res = await engine.pingPeer(peer, directive || undefined);
           if (res.ok) {
-            ctx.ui.notify(`⚡ PING ${peer.name} [${peer.role}]: ${res.latencyMs}ms (PONG from PID ${peer.pid})`, "info");
+            const extra = directive ? " | 🎯 Directive dispatched & agent woken up!" : "";
+            ctx.ui.notify(`⚡ PING ${peer.name} [${peer.role}]: ${res.latencyMs}ms${extra}`, "info");
           } else {
             ctx.ui.notify(`✖ PING failed: ${res.error}`, "error");
           }

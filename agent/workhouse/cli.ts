@@ -34,6 +34,7 @@ async function main() {
 
     case "ping": {
       const target = args[1];
+      const directive = args.slice(2).join(" ");
       if (target) {
         const row = db.prepare("SELECT * FROM sessions WHERE name = ? OR id = ?").get(target, target) as any;
         if (!row) {
@@ -41,10 +42,17 @@ async function main() {
           process.exit(1);
         }
         const t0 = performance.now();
-        const res = await sendFrameToSocket(row.socket_path, { type: "PING", sender_id: "cli", sender_name: "cli", timestamp: Date.now() });
+        const res = await sendFrameToSocket(row.socket_path, {
+          type: "PING",
+          sender_id: "cli",
+          sender_name: "cli",
+          timestamp: Date.now(),
+          directive: directive || undefined,
+        });
         const lat = (performance.now() - t0).toFixed(2);
         if (res.ok) {
-          console.log(`⚡ PING ${row.name} [${row.role}]: ${C.boldGreen}${lat}ms${C.reset} (PONG from PID ${row.pid})`);
+          const extra = directive ? ` | 🎯 Dispatched directive: "${directive}"` : "";
+          console.log(`⚡ PING ${row.name} [${row.role}]: ${C.boldGreen}${lat}ms${C.reset} (PONG from PID ${row.pid})${extra}`);
         } else {
           console.log(`✖ PING ${row.name} failed: ${res.error}`);
         }

@@ -77,7 +77,7 @@ export interface TaskRecord {
 
 // IPC Frame Protocol
 export type WorkhouseFrame =
-  | { type: "PING"; sender_id: string; sender_name: string; timestamp: number }
+  | { type: "PING"; sender_id: string; sender_name: string; timestamp: number; directive?: string }
   | {
       type: "PONG";
       responder_id: string;

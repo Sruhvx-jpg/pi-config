@@ -7,6 +7,13 @@
     "catalyst": {
       "url": "https://catalyst.zohomcp.in/mcp/message"
     },
+    "oci-compute": {
+      "command": "uvx",
+      "args": [
+        "oracle.oci-compute-mcp-server"
+      ],
+      "description": "Official Oracle Cloud Compute MCP server"
+    },
     "excel": {
       "command": "npx",
       "args": [

@@ -64,6 +64,9 @@ You are an expert systems coding companion. Follow these architectural guideline
   - Guarantees the latest upstream edition on demand without polluting dotfiles with duplicate text.
 
 ## Strict Workflow Rules
+- **Disambiguate Intent Before Execution (Explore vs Execute)**:
+  - BEFORE jumping into file edits, installations, or executing structural changes, ALWAYS verify whether the operator intends to actively execute/implement work or is merely exploring, asking a conceptual question, or seeking recommendations/options.
+  - If the prompt asks to explore, compare, evaluate, or suggest ("tell me", "explore", "what are the options", "can you propose"), strictly present the analysis, options, and trade-offs. NEVER perform premature installations, dependency additions, or file modifications until the operator explicitly confirms execution.
 - **NO Autonomous PR Submissions or GitHub Mutations**: NEVER submit or open a Pull Request upstream, post comments, or mutate GitHub state without explicit review, confirmation, and direct user authorization. Show diffs and plans first.
 - **Strict Read-Only Whitelist for `gh`**:
   - Only safe read-only queries (`gh pr view/list/diff`, `gh issue view/list`, `gh run view/list`, `gh repo view`) are permitted without prompt.

@@ -7,6 +7,9 @@ agent/sessions/
 auth.json
 agent/auth.json
 **/auth.json
+antigravity-accounts.json
+agent/antigravity-accounts.json
+**/antigravity-accounts.json
 mcp-auth.json
 agent/mcp-auth.json
 **/mcp-auth.json

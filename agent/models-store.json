@@ -445,17 +445,6 @@
           }
         ],
         "routing": {
-          "claude-opus-4-6": {
-            "off": "claude-opus-4-6-thinking",
-            "routing": {
-              "minimal": "claude-opus-4-6-thinking",
-              "low": "claude-opus-4-6-thinking",
-              "medium": "claude-opus-4-6-thinking",
-              "high": "claude-opus-4-6-thinking",
-              "xhigh": "claude-opus-4-6-thinking"
-            },
-            "defaultRequestId": "claude-opus-4-6-thinking"
-          },
           "gemini-3.8-flash": {
             "off": "gemini-3.8-flash-low",
             "routing": {
@@ -478,6 +467,17 @@
             },
             "defaultRequestId": "gpt-oss-120b-medium"
           },
+          "claude-opus-4-6": {
+            "off": "claude-opus-4-6-thinking",
+            "routing": {
+              "minimal": "claude-opus-4-6-thinking",
+              "low": "claude-opus-4-6-thinking",
+              "medium": "claude-opus-4-6-thinking",
+              "high": "claude-opus-4-6-thinking",
+              "xhigh": "claude-opus-4-6-thinking"
+            },
+            "defaultRequestId": "claude-opus-4-6-thinking"
+          },
           "claude-sonnet-4-6": {
             "off": "claude-sonnet-4-6",
             "routing": {
@@ -489,16 +489,16 @@
             },
             "defaultRequestId": "claude-sonnet-4-6"
           },
-          "gemini-3.7-flash": {
-            "off": "gemini-3.7-flash-low",
+          "gemini-4-argon": {
+            "off": "gemini-4-argon-low",
             "routing": {
-              "minimal": "gemini-3.7-flash-low",
-              "low": "gemini-3.7-flash-low",
-              "medium": "gemini-3.7-flash-medium",
-              "high": "gemini-3.7-flash-high",
-              "xhigh": "gemini-3.7-flash-high"
+              "minimal": "gemini-4-argon-low",
+              "low": "gemini-4-argon-low",
+              "medium": "gemini-4-argon-medium",
+              "high": "gemini-4-argon-high",
+              "xhigh": "gemini-4-argon-high"
             },
-            "defaultRequestId": "gemini-3.7-flash-low"
+            "defaultRequestId": "gemini-4-argon-low"
           },
           "gemini-3.6-flash": {
             "off": "gemini-3.6-flash-low",
@@ -511,6 +511,17 @@
             },
             "defaultRequestId": "gemini-3.6-flash-low"
           },
+          "gemini-3.7-flash": {
+            "off": "gemini-3.7-flash-low",
+            "routing": {
+              "minimal": "gemini-3.7-flash-low",
+              "low": "gemini-3.7-flash-low",
+              "medium": "gemini-3.7-flash-medium",
+              "high": "gemini-3.7-flash-high",
+              "xhigh": "gemini-3.7-flash-high"
+            },
+            "defaultRequestId": "gemini-3.7-flash-low"
+          },
           "gemini-3.1-pro": {
             "off": "gemini-3.1-pro-low",
             "routing": {
@@ -521,21 +532,10 @@
               "xhigh": "gemini-pro-agent"
             },
             "defaultRequestId": "gemini-3.1-pro-low"
-          },
-          "gemini-4-argon": {
-            "off": "gemini-4-argon-low",
-            "routing": {
-              "minimal": "gemini-4-argon-low",
-              "low": "gemini-4-argon-low",
-              "medium": "gemini-4-argon-medium",
-              "high": "gemini-4-argon-high",
-              "xhigh": "gemini-4-argon-high"
-            },
-            "defaultRequestId": "gemini-4-argon-low"
           }
         }
       },
-      "checkedAt": 1792341867688,
+      "checkedAt": 1792425599459,
       "modelEnums": {
         "gemini-3.6-flash-tiered": "MODEL_PLACEHOLDER_M196",
         "claude-sonnet-4-6": "MODEL_PLACEHOLDER_M35",
@@ -576,7 +576,7 @@
         "gemini-4-argon-high": "MODEL_PLACEHOLDER_M417"
       },
       "schemaVersion": 2,
-      "credentialKey": "753c4fe66bb27fd60d14f5d1bcefe26a78729022cc0061412d6279112c53ccdc"
+      "credentialKey": "fce8e7fc229e81578c4720aa946d84d71e409d3db1a07d0d940672c37dedb42e"
     }
   }
 }

@@ -318,7 +318,10 @@ export default function (pi: ExtensionAPI) {
       if (choice === "1. Submit") {
         if (command && command.trim()) {
           try {
-            const out = cp.execSync(command, { encoding: "utf8" });
+            const out = cp.execSync(command, {
+              encoding: "utf8",
+              stdio: ["pipe", "pipe", "pipe"],
+            });
             return {
               content: [{
                 type: "text",
@@ -330,11 +333,12 @@ export default function (pi: ExtensionAPI) {
               }],
             };
           } catch (err: any) {
+            const stderrMsg = err.stderr ? `\nStderr: ${err.stderr.toString().trim()}` : "";
             return {
               isError: true,
               content: [{
                 type: "text",
-                text: `Draft approved but command failed: ${err.message || String(err)}`,
+                text: `Draft approved but command failed: ${err.message || String(err)}${stderrMsg}`,
               }],
             };
           }

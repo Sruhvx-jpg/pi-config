@@ -1,2 +1,0 @@
-#!/usr/bin/env bash
-exec node --experimental-strip-types /home/dron/.pi/agent/workhouse/cli.ts "$@"

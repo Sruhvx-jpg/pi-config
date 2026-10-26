@@ -280,16 +280,16 @@
           }
         ],
         "routing": {
-          "gemini-3.8-flash": {
-            "off": "gemini-3.8-flash-low",
+          "gpt-oss-120b": {
+            "off": "gpt-oss-120b-medium",
             "routing": {
-              "minimal": "gemini-3.8-flash-low",
-              "low": "gemini-3.8-flash-low",
-              "medium": "gemini-3.8-flash-medium",
-              "high": "gemini-3.8-flash-high",
-              "xhigh": "gemini-3.8-flash-high"
+              "minimal": "gpt-oss-120b-medium",
+              "low": "gpt-oss-120b-medium",
+              "medium": "gpt-oss-120b-medium",
+              "high": "gpt-oss-120b-medium",
+              "xhigh": "gpt-oss-120b-medium"
             },
-            "defaultRequestId": "gemini-3.8-flash-low"
+            "defaultRequestId": "gpt-oss-120b-medium"
           },
           "gemini-4-argon-disabled": {
             "off": "gemini-4-argon-disabled",
@@ -313,6 +313,17 @@
             },
             "defaultRequestId": "claude-opus-4-6-thinking"
           },
+          "gemini-3.8-flash": {
+            "off": "gemini-3.8-flash-low",
+            "routing": {
+              "minimal": "gemini-3.8-flash-low",
+              "low": "gemini-3.8-flash-low",
+              "medium": "gemini-3.8-flash-medium",
+              "high": "gemini-3.8-flash-high",
+              "xhigh": "gemini-3.8-flash-high"
+            },
+            "defaultRequestId": "gemini-3.8-flash-low"
+          },
           "claude-sonnet-4-6": {
             "off": "claude-sonnet-4-6",
             "routing": {
@@ -323,21 +334,10 @@
               "xhigh": "claude-sonnet-4-6"
             },
             "defaultRequestId": "claude-sonnet-4-6"
-          },
-          "gpt-oss-120b": {
-            "off": "gpt-oss-120b-medium",
-            "routing": {
-              "minimal": "gpt-oss-120b-medium",
-              "low": "gpt-oss-120b-medium",
-              "medium": "gpt-oss-120b-medium",
-              "high": "gpt-oss-120b-medium",
-              "xhigh": "gpt-oss-120b-medium"
-            },
-            "defaultRequestId": "gpt-oss-120b-medium"
           }
         }
       },
-      "checkedAt": 1792848899202,
+      "checkedAt": 1793038993803,
       "modelEnums": {
         "gemini-3.6-flash-tiered": "MODEL_PLACEHOLDER_M196",
         "claude-sonnet-4-6": "MODEL_PLACEHOLDER_M35",

@@ -15,6 +15,9 @@
       },
       "evidence-auditor": {
         "model": "antigravity/gemini-3.8-flash"
+      },
+      "worker": {
+        "model": "antigravity/gemini-3.8-flash"
       }
     }
   },

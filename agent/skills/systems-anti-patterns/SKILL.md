@@ -153,6 +153,38 @@ Whenever auditing, reviewing, or writing networking, parser, framing, or protoco
 * **The Rule**:
   - Use `bytes::Bytes` / `BytesMut` for cheap reference-counted slicing (`bytes.slice(start..end)`).
 
+### Rule 5.3: Bare `.unwrap()` Without Invariant Documentation
+* **The Pitfall**: Calling `.unwrap()` on `Option` or `Result` without documenting why failure is impossible.
+* **Why it breaks**: When panics occur in production, bare `unwrap()` provides zero context in stack traces and hides the original engineering contract from future maintainers.
+* **The Rule**:
+  - Replace bare `.unwrap()` with `.expect(...)` articulating the exact safety invariant (e.g. `.expect("static response builder invariants guaranteed valid")`).
+  - See [Case 12: Type System Defenses & Allocation Anti-Patterns](eg/12-type-system-defenses-and-allocation-anti-patterns.md).
+
+### Rule 5.4: Missing `#[non_exhaustive]` on Public Domain Structs & Enums
+* **The Pitfall**: Exposing library structs with public fields or public enums without `#[non_exhaustive]`.
+* **Why it breaks**: Adding a field or variant in a future release breaks external pattern matches and direct struct literal constructions, creating unexpected Semver breaking changes.
+* **The Rule**:
+  - Annotate publicly exposed structs having public fields and public enums with `#[non_exhaustive]`.
+  - Force consumers to use factory constructors and wildcard matches (`..` for structs, `_ =>` for enums).
+
+### Rule 5.5: Primitive Obsession vs Strong Newtypes
+* **The Pitfall**: Passing raw primitive types (`String`, `u64`) across domain boundaries (table names, storage paths, resource IDs).
+* **Why it breaks**: Identifiers of the same underlying type are easily transposed at call sites with zero compiler diagnostics, and input validation is redundantly executed at every leaf function.
+* **The Rule**:
+  - Wrap domain identifiers in zero-cost newtype tuple structs (`pub struct TableName(pub String);`). Enforce validation in constructor methods.
+
+### Rule 5.6: Silent Discard of Builders & Pure Types (Missing `#[must_use]`)
+* **The Pitfall**: Omitting `#[must_use]` on builder structs, chained configuration methods, and pure constructor/error factories.
+* **Why it breaks**: Callers can accidentally drop newly modified builder instances or constructed error objects without compiler warnings.
+* **The Rule**:
+  - Annotate builder structs and error factories with `#[must_use = "message explaining consumption invariant"]`.
+
+### Rule 5.7: Double Indirection on Static Collections (`Arc<Vec<T>>` vs `Arc<[T]>`)
+* **The Pitfall**: Storing static, read-only collections as `Arc<Vec<T>>`.
+* **Why it breaks**: Forces two pointer hops on every access ($\text{Arc} \to \text{Vec header on heap} \to \text{elements buffer}$) and wastes 8 bytes of unused vector capacity.
+* **The Rule**:
+  - Use `Arc<[T]>` for immutable shared collections (`backends.into()`). Reduces indirection to a single pointer hop.
+
 ---
 
 ## 6. Go Systems Idioms (Line of Sight)

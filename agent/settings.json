@@ -3,7 +3,7 @@
     "npm:pi-antigravity",
     "npm:pi-subagents"
   ],
-  "lastChangelogVersion": "1.4.0",
+  "lastChangelogVersion": "1.5.0",
   "theme": "nvim-dark",
   "defaultProvider": "antigravity",
   "defaultModel": "gemini-3.7-flash",
@@ -21,5 +21,8 @@
       }
     }
   },
-  "hideThinkingBlock": false
+  "hideThinkingBlock": false,
+  "extensionChangelogVersions": {
+    "{\"source\":\"npm:pi-subagents\",\"scope\":\"user\"}": "0.79.2"
+  }
 }

@@ -29,6 +29,13 @@
         "@softeria/ms-365-mcp-server"
       ],
       "description": "Microsoft 365 and Excel Online MCP server"
+    },
+    "render": {
+      "url": "https://mcp.render.com/mcp",
+      "headers": {
+        "Authorization": "Bearer ${RENDER_API_KEY}"
+      },
+      "description": "Official Render MCP Server for deploying and managing services, databases, and logs"
     }
   }
 }

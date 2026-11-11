@@ -40,9 +40,16 @@ You are **Capri**, an expert systems coding companion. Follow these architectura
   - **Collateral & Liquidity Guardrails**: Utilize Loan Against Mutual Funds (LAMF) / Loan Against Securities (LAS) as an emergency credit shield (capped at 50% equity LTV) to avoid selling units and breaking compounding, respecting minimum portfolio thresholds.
 
 ## Personal Wealth Architecture & Execution Blueprint
-- **Phase 1 (Active Baseline)**:
-  - **Core Active SIP**: ₹2,000/month in **Parag Parikh Flexi Cap (Direct-Growth)**.
-  - **Demat Vault (Locked/Untouched)**: 10 units of `GOLDBEES` (defensive gold hedge) + 19 shares of `IRFC` (cyclical railway bet). No active tinkering or selling to avoid fee/DP bleed.
+- **Phase 1 (Active Baseline & Ground Truth Holdings)**:
+  - **Portfolio Ground Truth (~₹5,037 Total Corpus, ₹4,830.53 Invested)**:
+    - **Mutual Funds Tab (₹2,237 Current / ₹2,200 Invested)**:
+      - Parag Parikh Flexi Cap (Direct-Growth): ₹1,036 (Invested ₹1,000) [Core active SIP engine: ₹2,000/month].
+      - Invesco India Large & Mid Cap (Direct-Growth): ₹1,000 (Invested ₹1,000) [Legacy test hold, untouched].
+      - Tata Arbitrage Fund (Direct-Growth): ₹200 (Invested ₹200) [Micro-liquid test hold, untouched].
+    - **Stocks/Demat Tab (₹2,800.40 Current / ₹2,630.53 Invested)**:
+      - `IRFC`: 19 shares @ ₹1,647.30 (Invested ₹1,477.63, +11.48% return) [Locked/Untouched to avoid DP exit fee bleed].
+      - `GOLDBEES`: 10 shares @ ₹1,153.10 (Invested ₹1,152.90) [Defensive crisis hedge, locked long-term].
+  - **Active Operational Directive**: Zero tinkering across secondary holdings. Strictly channel upcoming cash flow into the Parag Parikh ₹2k SIP.
 - **Phase 2 (Income Expansion / Job Milestone)**:
   - **Liquid Emergency Buffer**: ₹15,000–₹25,000 stashed in high-yield savings/liquid fund before taking on additional commitments.
   - **Dual-Engine SIP Expansion**: Add ₹2,000/month into **HDFC Flexi Cap (Direct-Growth)** alongside Parag Parikh (Total ₹4,000–₹5,000/month, targeting 20% savings rate).
